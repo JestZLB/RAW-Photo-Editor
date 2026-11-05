@@ -1,12 +1,15 @@
+/* ---- 墨蓝（默认，无 data-theme）：深蓝灰工作台 ---- */
+/* 这些 token 不能写成 `--bg: var(--bg)` 之类的自引用：自定义属性自引用会构成
+   循环、在计算值阶段失效，默认主题下的背景/面板/描边会退回透明。 */
 :root {
   color-scheme: dark;
-  --bg: var(--bg);
+  --bg: #0b0e13;
   --bg-deep: #080b10;
-  --surface: var(--surface);
+  --surface: #121821;
   --surface-2: #151a23;
-  --raised: var(--raised);
+  --raised: #1b2331;
   --raised-2: #242d3b;
-  --border: var(--border);
+  --border: #232d3a;
   --border-strong: #303a4b;
   --text: #e8edf5;
   --muted: #93a1b5;
@@ -18,7 +21,7 @@
   --red: #ff8793;
   --violet: #c2a2ff;
   --accent-rgb: 131, 181, 255;
-  --accent-light: var(--accent-light);
+  --accent-light: #b9d4ff;
   --bg-rgb: 11, 14, 19;
   --surface-rgb: 18, 24, 33;
   --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
