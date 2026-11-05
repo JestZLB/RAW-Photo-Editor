@@ -50,6 +50,9 @@ jobs:
         with:
           workspaces: ". -> target"
 
+      - name: Format check
+        run: cargo fmt --all -- --check
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
