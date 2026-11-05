@@ -462,9 +462,7 @@ mod tests {
         }
         // The persisted document is revision 2, but previews 3..5 were left by
         // a crashed session. They must not evict the fresh revision-2 render.
-        let removed = store
-            .prune_render_previews(project_id, 2, Some(2))
-            .unwrap();
+        let removed = store.prune_render_previews(project_id, 2, Some(2)).unwrap();
         assert_eq!(removed, 4, "3 stale newer files + 1 beyond the keep budget");
         let kept: Vec<u64> = fs::read_dir(store.previews_dir(project_id))
             .unwrap()

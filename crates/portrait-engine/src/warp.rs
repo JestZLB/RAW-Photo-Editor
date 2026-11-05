@@ -100,8 +100,7 @@ pub fn apply_face_shape(image: &mut LinearImage, params: &PortraitParams) {
                 let dy = (py - face.cy) / face.ry;
                 if dx.abs() < 1.5 && dy.abs() < 1.4 {
                     let horizontal = 1.0 - smoothstep(0.45, 1.45, dx.abs());
-                    let vertical = smoothstep(-0.45, 0.2, dy)
-                        * (1.0 - smoothstep(0.9, 1.35, dy));
+                    let vertical = smoothstep(-0.45, 0.2, dy) * (1.0 - smoothstep(0.9, 1.35, dy));
                     let k = slim * 0.18 * horizontal * vertical;
                     sx += (px - face.cx) * k;
                 }
@@ -111,8 +110,7 @@ pub fn apply_face_shape(image: &mut LinearImage, params: &PortraitParams) {
                 let dx = (px - face.cx) / face.rx;
                 let dy = (py - face.cy) / face.ry;
                 if dy > 0.05 && dy < 1.2 && dx.abs() < 1.4 {
-                    let vertical = smoothstep(0.05, 0.45, dy)
-                        * (1.0 - smoothstep(0.95, 1.25, dy));
+                    let vertical = smoothstep(0.05, 0.45, dy) * (1.0 - smoothstep(0.95, 1.25, dy));
                     let horizontal = 1.0 - smoothstep(0.45, 1.4, dx.abs());
                     let k = jaw * 0.14 * vertical * horizontal;
                     sx += (px - face.cx) * k;
@@ -123,8 +121,7 @@ pub fn apply_face_shape(image: &mut LinearImage, params: &PortraitParams) {
                 let dx = ((px - face.cx) / face.rx).abs();
                 let dy = (py - face.cy) / face.ry;
                 if dy > 0.15 && dy < 1.5 && dx < 0.9 {
-                    let vertical = smoothstep(0.15, 0.6, dy)
-                        * (1.0 - smoothstep(1.15, 1.5, dy));
+                    let vertical = smoothstep(0.15, 0.6, dy) * (1.0 - smoothstep(1.15, 1.5, dy));
                     let horizontal = 1.0 - smoothstep(0.25, 0.9, dx);
                     let k = chin * 0.12 * vertical * horizontal;
                     sy -= (py - face.cy) * k;
@@ -138,10 +135,8 @@ pub fn apply_face_shape(image: &mut LinearImage, params: &PortraitParams) {
                     let distance = (dx * dx + dy * dy).sqrt();
                     if distance < 1.0 {
                         let side = if eye.cx < face.cx { -1.0 } else { 1.0 };
-                        let shift = eye_gap
-                            * face.rx
-                            * 0.08
-                            * (1.0 - smoothstep(0.0, 1.0, distance));
+                        let shift =
+                            eye_gap * face.rx * 0.08 * (1.0 - smoothstep(0.0, 1.0, distance));
                         sx -= side * shift;
                     }
                 }
@@ -422,7 +417,10 @@ mod tests {
                 let y = (index / 160) as u32;
                 (60..105).contains(&x)
                     && (70..110).contains(&y)
-                    && old[..3].iter().zip(&new[..3]).any(|(a, b)| (a - b).abs() > 1e-4)
+                    && old[..3]
+                        .iter()
+                        .zip(&new[..3])
+                        .any(|(a, b)| (a - b).abs() > 1e-4)
             });
         assert!(changed, "the lower face must move");
         assert_eq!(luma_at(&source, 2, 2), background_before);
@@ -476,7 +474,10 @@ mod tests {
                 let y = (index / 160) as u32;
                 (40..120).contains(&x)
                     && (100..140).contains(&y)
-                    && old[..3].iter().zip(&new[..3]).any(|(a, b)| (a - b).abs() > 1e-4)
+                    && old[..3]
+                        .iter()
+                        .zip(&new[..3])
+                        .any(|(a, b)| (a - b).abs() > 1e-4)
             });
         assert!(changed, "the chin should move");
         assert_eq!(

@@ -7,15 +7,14 @@ use app_core::{
     AddLayerKind, AddLayerRequest, AiCapabilityRequest, AiDenoiseRequest, AiJobInfo,
     AiJobOperation, AiJobStatus, ApiError, AppPaths, AppService, ApplyAiResultRequest,
     CancelExportRequest, CommitChangesRequest, CreateProjectRequest, DeleteLayerRequest,
-    DuplicateLayerRequest,
-    EventSink, ExportBitDepth, ExportColorSpace, ExportImageFormat, ExportImageRequest,
-    ExportMetadata, ExportOptions, ExportProgress, ImportLutRequest, ImportPhotoRequest,
-    ListAiJobsRequest, NoopEventSink, OpenProjectRequest, PhotoHqDenoiseRequest,
-    PickWhiteBalanceRequest, ProjectIdRequest, ProviderConfigInput, ProviderKind,
-    RenameCollectionRequest, RenameProjectRequest, RenderPreviewRequest, SetCropRequest,
-    SetLayerMaskRequest,
-    SetProviderCredentialRequest, SubmitAiJobRequest, UpdateLayerParamsRequest, UpdateLayerRequest,
-    SyncColorAdjustmentsRequest, WatermarkOptions, WatermarkPosition,
+    DuplicateLayerRequest, EventSink, ExportBitDepth, ExportColorSpace, ExportImageFormat,
+    ExportImageRequest, ExportMetadata, ExportOptions, ExportProgress, ImportLutRequest,
+    ImportPhotoRequest, ListAiJobsRequest, NoopEventSink, OpenProjectRequest,
+    PhotoHqDenoiseRequest, PickWhiteBalanceRequest, ProjectIdRequest, ProviderConfigInput,
+    ProviderKind, RenameCollectionRequest, RenameProjectRequest, RenderPreviewRequest,
+    SetCropRequest, SetLayerMaskRequest, SetProviderCredentialRequest, SubmitAiJobRequest,
+    SyncColorAdjustmentsRequest, UpdateLayerParamsRequest, UpdateLayerRequest, WatermarkOptions,
+    WatermarkPosition,
 };
 use document::{
     ColorParams, CropRect, LayerMask, LayerPatch, MaskGradient, MaskGradientKind, MaskPoint,
@@ -237,10 +236,7 @@ fn meta_update_returns_the_envelope_without_layers() {
             project_id: state.id.clone(),
         })
         .unwrap();
-    assert_eq!(
-        reopened.layers.last().unwrap().color.unwrap().exposure,
-        0.5
-    );
+    assert_eq!(reopened.layers.last().unwrap().color.unwrap().exposure, 0.5);
 }
 
 #[test]
@@ -543,7 +539,7 @@ fn crop_is_non_destructive_and_drives_preview_and_export() {
             project_id: project_id.clone(),
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: out.to_string_lossy().to_string(),
                 format: ExportImageFormat::Png,
                 quality: 100,
@@ -566,7 +562,7 @@ fn crop_is_non_destructive_and_drives_preview_and_export() {
             project_id: project_id.clone(),
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: square.to_string_lossy().to_string(),
                 format: ExportImageFormat::Png,
                 quality: 100,
@@ -625,7 +621,7 @@ fn raw_sample_imports_previews_and_exports() {
             project_id: state.id,
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: out.to_string_lossy().to_string(),
                 format: ExportImageFormat::Png,
                 quality: 100,
@@ -715,7 +711,7 @@ fn export_emits_progress_and_cancel_unknown_job_is_a_noop() {
             project_id: state.id.clone(),
             job_id: Some(job_id.to_string()),
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: out.to_string_lossy().to_string(),
                 format: ExportImageFormat::Png,
                 quality: 90,
@@ -994,7 +990,7 @@ fn export_is_atomic_and_refuses_to_overwrite_original() {
             project_id: state.id.clone(),
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: out.to_string_lossy().to_string(),
                 format: ExportImageFormat::Png,
                 quality: 90,
@@ -1019,7 +1015,7 @@ fn export_is_atomic_and_refuses_to_overwrite_original() {
             project_id: state.id.clone(),
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: proxy.to_string_lossy().to_string(),
                 format: ExportImageFormat::Jpeg,
                 quality: 85,
@@ -1041,7 +1037,7 @@ fn export_is_atomic_and_refuses_to_overwrite_original() {
             project_id: state.id,
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: sample_path,
                 format: ExportImageFormat::Png,
                 quality: 90,
@@ -1438,7 +1434,7 @@ fn metadata_policies_keep_privacy_and_none_behave_differently() {
                 project_id: state.id.clone(),
                 job_id: None,
                 options: ExportOptions {
-            watermark: None,
+                    watermark: None,
                     path: path.to_string_lossy().to_string(),
                     format,
                     quality: 100,
@@ -1540,7 +1536,7 @@ fn metadata_policies_keep_privacy_and_none_behave_differently() {
             project_id: state.id.clone(),
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: p3_tiff.to_string_lossy().to_string(),
                 format: ExportImageFormat::Tiff,
                 quality: 100,
@@ -1636,7 +1632,7 @@ fn sixteen_bit_export_uses_the_linear_pipeline_and_rejects_jpeg() {
             project_id: state.id.clone(),
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: png.to_string_lossy().to_string(),
                 format: ExportImageFormat::Png,
                 quality: 100,
@@ -1668,7 +1664,7 @@ fn sixteen_bit_export_uses_the_linear_pipeline_and_rejects_jpeg() {
             project_id: state.id.clone(),
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: jpg.to_string_lossy().to_string(),
                 format: ExportImageFormat::Jpeg,
                 quality: 90,
@@ -1691,7 +1687,7 @@ fn sixteen_bit_export_uses_the_linear_pipeline_and_rejects_jpeg() {
             project_id: state.id,
             job_id: None,
             options: ExportOptions {
-            watermark: None,
+                watermark: None,
                 path: tiff.to_string_lossy().to_string(),
                 format: ExportImageFormat::Tiff,
                 quality: 100,
@@ -2045,10 +2041,7 @@ fn imported_lut_survives_reopen_and_drives_the_cpu_renderer() {
             label: "LUT 风格".into(),
         })
         .unwrap();
-    assert_eq!(
-        committed.schema_version,
-        ::document::CURRENT_SCHEMA_VERSION
-    );
+    assert_eq!(committed.schema_version, ::document::CURRENT_SCHEMA_VERSION);
     let color = committed.layers.last().unwrap().color.unwrap();
     assert_eq!(color.lut_asset_id, Some(asset_id));
     assert!((color.lut_strength - 0.6).abs() < 1e-6);
@@ -2815,7 +2808,10 @@ fn syncing_colour_adjustments_replaces_the_target_colour_stack() {
             project_ids: vec![target.id.clone(), target.id.clone(), source.id.clone()],
         })
         .unwrap();
-    assert_eq!(result.synced, 1, "duplicates and the source itself are skipped");
+    assert_eq!(
+        result.synced, 1,
+        "duplicates and the source itself are skipped"
+    );
     assert!(result.failed.is_empty());
 
     let reopened = app
@@ -2829,13 +2825,20 @@ fn syncing_colour_adjustments_replaces_the_target_colour_stack() {
         .iter()
         .filter(|layer| layer.kind == "color")
         .collect();
-    assert_eq!(colours.len(), 1, "one colour layer is created on the target");
+    assert_eq!(
+        colours.len(),
+        1,
+        "one colour layer is created on the target"
+    );
     let color = colours[0].color.unwrap();
     assert!((color.exposure - 0.8).abs() < 1e-6);
     assert!((color.contrast - 18.0).abs() < 1e-6);
     assert!((color.temperature + 12.0).abs() < 1e-6);
     assert!((color.vignette + 25.0).abs() < 1e-6);
-    let mask = colours[0].mask.as_ref().expect("the local mask travels with the layer");
+    let mask = colours[0]
+        .mask
+        .as_ref()
+        .expect("the local mask travels with the layer");
     assert!((mask.feather - 0.3).abs() < 1e-6);
     assert_eq!(
         mask.gradient.as_ref().map(|gradient| gradient.start),
@@ -2843,7 +2846,11 @@ fn syncing_colour_adjustments_replaces_the_target_colour_stack() {
     );
     assert!(reopened.can_undo, "the sync is undoable on the target");
     assert_eq!(
-        reopened.layers.iter().filter(|layer| layer.kind == "base").count(),
+        reopened
+            .layers
+            .iter()
+            .filter(|layer| layer.kind == "base")
+            .count(),
         1,
         "the original photo layer is untouched"
     );
@@ -3078,7 +3085,10 @@ fn invalid_watermark_payloads_are_rejected_before_encoding() {
         })
         .unwrap_err();
     assert_eq!(error.code, "INVALID_ARGUMENT");
-    assert!(!out.exists(), "a rejected watermark never writes a partial file");
+    assert!(
+        !out.exists(),
+        "a rejected watermark never writes a partial file"
+    );
 }
 
 #[test]

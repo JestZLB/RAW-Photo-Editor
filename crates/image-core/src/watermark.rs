@@ -58,8 +58,7 @@ pub fn composite_watermark(
     let short = width.min(height) as f32;
     let target_width = (short * scale).round().clamp(1.0, width as f32) as u32;
     let aspect = spec.image.height as f32 / spec.image.width as f32;
-    let target_height = ((target_width as f32 * aspect).round() as u32)
-        .clamp(1, height);
+    let target_height = ((target_width as f32 * aspect).round() as u32).clamp(1, height);
     let stamp = spec.image.resize_exact(target_width, target_height)?;
     let margin_px = (short * margin).round() as i64;
     let left = match spec.anchor {
@@ -103,9 +102,8 @@ fn blend_eight(target: &mut DecodedImage, stamp: &DecodedImage, left: u32, top: 
             }
             let dst = (dst_y as usize * target_width + dst_x as usize) * 4;
             for channel in 0..3 {
-                let mixed =
-                    stamp.rgba8[src + channel] as f32 * alpha
-                        + target.rgba8[dst + channel] as f32 * (1.0 - alpha);
+                let mixed = stamp.rgba8[src + channel] as f32 * alpha
+                    + target.rgba8[dst + channel] as f32 * (1.0 - alpha);
                 target.rgba8[dst + channel] = mixed.round().clamp(0.0, 255.0) as u8;
             }
         }
@@ -199,12 +197,8 @@ mod tests {
 
     #[test]
     fn sixteen_bit_targets_keep_full_range() {
-        let mut canvas = RasterImage::Sixteen(crate::Srgb16Image::new(
-            2,
-            2,
-            vec![0u16; 2 * 2 * 4],
-        )
-        .unwrap());
+        let mut canvas =
+            RasterImage::Sixteen(crate::Srgb16Image::new(2, 2, vec![0u16; 2 * 2 * 4]).unwrap());
         let stamp = solid(2, 2, [255, 255, 255, 255]);
         composite_watermark(
             &mut canvas,
