@@ -103,6 +103,12 @@ pub(crate) struct OpenProject {
     pub(crate) regions: Vec<crate::dto::PortraitFaceRegions>,
     pub(crate) regions_analysed: bool,
     pub(crate) detection: Option<CachedDetection>,
+    /// Decoded 1600px preview proxy, tagged with the asset it came from.
+    /// Interactive previews reuse it instead of decoding the PNG again on every
+    /// slider tick. A 1600px RGBA8 proxy is ~10 MB and at most
+    /// [`MAX_OPEN_PROJECTS`] sessions exist, so the extra footprint is bounded;
+    /// it is dropped together with the session or when the asset changes.
+    pub(crate) proxy: Option<(Uuid, Arc<DecodedImage>)>,
     /// Set by a command that mutated the document; flushed by `session()` after
     /// the global lock is released.
     pending_save: bool,
@@ -200,6 +206,7 @@ impl SessionManager {
                 regions: Vec::new(),
                 regions_analysed: false,
                 detection: None,
+                proxy: None,
                 pending_save: false,
                 save_seq: 0,
                 last_saved_seq: 0,
@@ -607,7 +614,40 @@ impl AppService {
             OutputFormat::Png,
             100,
         )?;
+        // The proxy on disk was just rewritten from new pixels, so any decoded
+        // copy kept for this session is stale.
+        self.drop_source_proxy(project_id);
         Ok(())
+    }
+
+    /// Decoded 1600px proxy for interactive previews, when already available.
+    /// Returns `None` for a different asset so a replaced source can never be
+    /// rendered from a stale decode.
+    fn cached_source_proxy(&self, project_id: Uuid, asset_id: Uuid) -> Option<Arc<DecodedImage>> {
+        let sessions = self.sessions.lock().ok()?;
+        let project = sessions.open.get(&project_id)?;
+        match project.proxy.as_ref() {
+            Some((cached_asset, proxy)) if *cached_asset == asset_id => Some(proxy.clone()),
+            _ => None,
+        }
+    }
+
+    fn store_source_proxy(&self, project_id: Uuid, asset_id: Uuid, proxy: Arc<DecodedImage>) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        if let Some(project) = sessions.touch(project_id) {
+            project.proxy = Some((asset_id, proxy));
+        }
+    }
+
+    fn drop_source_proxy(&self, project_id: Uuid) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        if let Some(project) = sessions.open.get_mut(&project_id) {
+            project.proxy = None;
+        }
     }
 
     pub(crate) fn load_source_image(

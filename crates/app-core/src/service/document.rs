@@ -252,6 +252,40 @@ fn source_luma_histogram(image: &DecodedImage) -> [u32; 256] {
     histogram
 }
 
+/// Map a pixel crop expressed in original-source coordinates onto the proxy, so
+/// the same region is rendered after the proxy replaces the original. Keeping
+/// this in one place makes the cached and freshly decoded proxy paths identical.
+fn scale_crop_to_proxy(
+    document: &ProjectDocument,
+    proxy: &DecodedImage,
+    asset_width: u32,
+    asset_height: u32,
+) -> ProjectDocument {
+    let mut scaled = document.clone();
+    if proxy.width != asset_width || proxy.height != asset_height {
+        let sx = proxy.width as f64 / asset_width.max(1) as f64;
+        let sy = proxy.height as f64 / asset_height.max(1) as f64;
+        let next = &mut scaled.crop;
+        next.x = (next.x as f64 * sx).round() as u32;
+        next.y = (next.y as f64 * sy).round() as u32;
+        if next.width > 0 {
+            next.width = (next.width as f64 * sx).round().max(1.0) as u32;
+        }
+        if next.height > 0 {
+            next.height = (next.height as f64 * sy).round().max(1.0) as u32;
+        }
+        next.x = next.x.min(proxy.width.saturating_sub(1));
+        next.y = next.y.min(proxy.height.saturating_sub(1));
+        if next.width > 0 {
+            next.width = next.width.min(proxy.width - next.x).max(1);
+        }
+        if next.height > 0 {
+            next.height = next.height.min(proxy.height - next.y).max(1);
+        }
+    }
+    scaled
+}
+
 impl AppService {
     /// Use the on-disk 1600px source proxy for ordinary previews instead of
     /// decoding the original. Small crops still need the full source so their
@@ -280,36 +314,27 @@ impl AppService {
                 });
                 let required = max_dimension as f64 / SOURCE_PREVIEW_MAX as f64;
                 if crop_long as f64 / frame_long as f64 + 0.05 >= required {
+                    // Decoding the 1600px PNG costs more than the preview render
+                    // at this size, and the proxy cannot change while the
+                    // project is open, so the decoded pixels are reused across
+                    // frames instead of being decoded on every slider tick.
+                    if let Some(proxy) = self.cached_source_proxy(project_id, asset.asset_id) {
+                        let scaled =
+                            scale_crop_to_proxy(document, &proxy, asset.width, asset.height);
+                        return Ok((scaled, proxy));
+                    }
                     let path = self.assets.source_preview_path(
                         project_id,
                         asset.asset_id,
                         SOURCE_PREVIEW_MAX,
                     );
                     if path.is_file() {
-                        if let Ok(proxy) = decode_source_image(&path) {
-                            let mut scaled = document.clone();
-                            if proxy.width != asset.width || proxy.height != asset.height {
-                                let sx = proxy.width as f64 / asset.width as f64;
-                                let sy = proxy.height as f64 / asset.height as f64;
-                                let next = &mut scaled.crop;
-                                next.x = (next.x as f64 * sx).round() as u32;
-                                next.y = (next.y as f64 * sy).round() as u32;
-                                if next.width > 0 {
-                                    next.width = (next.width as f64 * sx).round().max(1.0) as u32;
-                                }
-                                if next.height > 0 {
-                                    next.height = (next.height as f64 * sy).round().max(1.0) as u32;
-                                }
-                                next.x = next.x.min(proxy.width.saturating_sub(1));
-                                next.y = next.y.min(proxy.height.saturating_sub(1));
-                                if next.width > 0 {
-                                    next.width = next.width.min(proxy.width - next.x).max(1);
-                                }
-                                if next.height > 0 {
-                                    next.height = next.height.min(proxy.height - next.y).max(1);
-                                }
-                            }
-                            return Ok((scaled, Arc::new(proxy)));
+                        if let Ok(decoded) = decode_source_image(&path) {
+                            let proxy = Arc::new(decoded);
+                            let scaled =
+                                scale_crop_to_proxy(document, &proxy, asset.width, asset.height);
+                            self.store_source_proxy(project_id, asset.asset_id, proxy.clone());
+                            return Ok((scaled, proxy));
                         }
                     }
                 }
@@ -1412,7 +1437,9 @@ fn normalize_path(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::portrait_regions_to_dto;
+    use super::{portrait_regions_to_dto, scale_crop_to_proxy};
+    use ::document::ProjectDocument;
+    use image_core::DecodedImage;
     use portrait_engine::analysis::FaceBox;
     use portrait_engine::regions::{
         DetectedRegion, FaceRegions, RegionKind, RegionPoint, RegionShape,
@@ -1453,5 +1480,59 @@ mod tests {
         assert!((face.regions[0].radius_y - 0.05).abs() < 1e-6);
         assert!((face.face_box.x - 250.0).abs() < 1e-6);
         assert!((face.face_box.width - 200.0).abs() < 1e-6);
+    }
+
+    fn document_with_crop(x: u32, y: u32, width: u32, height: u32) -> ProjectDocument {
+        let mut document = ProjectDocument::new("proxy", 4000, 2000);
+        document.crop.x = x;
+        document.crop.y = y;
+        document.crop.width = width;
+        document.crop.height = height;
+        document.crop.angle = 0.0;
+        document
+    }
+
+    fn proxy_of(width: u32, height: u32) -> DecodedImage {
+        DecodedImage::new(width, height, vec![0u8; (width * height * 4) as usize]).unwrap()
+    }
+
+    #[test]
+    fn crop_is_mapped_onto_the_preview_proxy() {
+        let document = document_with_crop(1000, 500, 2000, 1000);
+        let scaled = scale_crop_to_proxy(&document, &proxy_of(1600, 800), 4000, 2000);
+        // 4000x2000 -> 1600x800 is 0.4, so every crop edge follows.
+        assert_eq!(
+            (
+                scaled.crop.x,
+                scaled.crop.y,
+                scaled.crop.width,
+                scaled.crop.height
+            ),
+            (400, 200, 800, 400)
+        );
+    }
+
+    #[test]
+    fn crop_is_untouched_when_the_proxy_matches_the_source() {
+        let document = document_with_crop(1000, 500, 2000, 1000);
+        let scaled = scale_crop_to_proxy(&document, &proxy_of(4000, 2000), 4000, 2000);
+        assert_eq!(
+            (
+                scaled.crop.x,
+                scaled.crop.y,
+                scaled.crop.width,
+                scaled.crop.height
+            ),
+            (1000, 500, 2000, 1000)
+        );
+    }
+
+    #[test]
+    fn crop_is_clamped_inside_a_smaller_proxy() {
+        let document = document_with_crop(3900, 1900, 400, 400);
+        let scaled = scale_crop_to_proxy(&document, &proxy_of(1600, 800), 4000, 2000);
+        assert!(scaled.crop.x + scaled.crop.width <= 1600);
+        assert!(scaled.crop.y + scaled.crop.height <= 800);
+        assert!(scaled.crop.width >= 1 && scaled.crop.height >= 1);
     }
 }
