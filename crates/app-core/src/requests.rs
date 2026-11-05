@@ -26,6 +26,20 @@ pub struct OpenProjectRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateVersionRequest {
+    pub project_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionIdRequest {
+    pub project_id: String,
+    pub version_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenameProjectRequest {
     pub project_id: String,
     pub name: String,

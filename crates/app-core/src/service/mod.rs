@@ -9,6 +9,7 @@ mod denoise;
 mod document;
 mod projects;
 mod providers;
+mod versions;
 
 use std::collections::HashMap;
 use std::path::PathBuf;

@@ -3,12 +3,14 @@ mod app;
 mod document;
 mod project;
 mod provider;
+mod version;
 
 pub use ai::*;
 pub use app::*;
 pub use document::*;
 pub use project::*;
 pub use provider::*;
+pub use version::*;
 
 use app_core::ApiError;
 

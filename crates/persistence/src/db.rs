@@ -5,7 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use thiserror::Error;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS projects (
@@ -60,6 +60,20 @@ CREATE TABLE IF NOT EXISTS providers (
     allow_localhost INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+-- Named snapshots: a full document copy the user can restore later. Unlike the
+-- undo stack these survive restarts, which is what makes them useful as
+-- "versions" rather than "history".
+CREATE TABLE IF NOT EXISTS project_versions (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    document_json TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    thumbnail_path TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_versions_project ON project_versions(project_id, created_at DESC);
 "#;
 
 #[derive(Debug, Error)]
@@ -119,6 +133,28 @@ pub struct AssetRecord {
     pub width: u32,
     pub height: u32,
     pub bytes: u64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VersionRecord {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub document_json: String,
+    pub revision: u64,
+    pub thumbnail_path: Option<String>,
+    pub created_at: String,
+}
+
+/// Listing omits `document_json` on purpose: one snapshot of a mask-heavy
+/// document is megabytes, and the list only needs labels and thumbnails.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VersionSummaryRecord {
+    pub id: Uuid,
+    pub name: String,
+    pub revision: u64,
+    pub thumbnail_path: Option<String>,
     pub created_at: String,
 }
 
@@ -295,6 +331,88 @@ impl Database {
             out.push(row?);
         }
         Ok(out)
+    }
+
+    pub fn insert_version(&self, version: &VersionRecord) -> Result<(), PersistenceError> {
+        let conn = self.connection()?;
+        conn.execute(
+            "INSERT INTO project_versions (id, project_id, name, document_json, revision,
+                thumbnail_path, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                thumbnail_path = excluded.thumbnail_path",
+            params![
+                version.id.to_string(),
+                version.project_id.to_string(),
+                version.name,
+                version.document_json,
+                version.revision as i64,
+                version.thumbnail_path,
+                version.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_versions(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<VersionSummaryRecord>, PersistenceError> {
+        let conn = self.connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, revision, thumbnail_path, created_at
+             FROM project_versions WHERE project_id = ?1
+             ORDER BY created_at DESC, rowid DESC LIMIT 200",
+        )?;
+        let rows = stmt.query_map(params![project_id.to_string()], |row| {
+            Ok(VersionSummaryRecord {
+                id: get_uuid(row, 0)?,
+                name: row.get(1)?,
+                revision: row.get::<_, i64>(2)? as u64,
+                thumbnail_path: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    pub fn get_version(&self, id: Uuid) -> Result<Option<VersionRecord>, PersistenceError> {
+        let conn = self.connection()?;
+        let record = conn
+            .query_row(
+                "SELECT id, project_id, name, document_json, revision, thumbnail_path, created_at
+                 FROM project_versions WHERE id = ?1",
+                params![id.to_string()],
+                |row| {
+                    Ok(VersionRecord {
+                        id: get_uuid(row, 0)?,
+                        project_id: get_uuid(row, 1)?,
+                        name: row.get(2)?,
+                        document_json: row.get(3)?,
+                        revision: row.get::<_, i64>(4)? as u64,
+                        thumbnail_path: row.get(5)?,
+                        created_at: row.get(6)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(record)
+    }
+
+    /// Scoped by project so a stale UI id can never delete another photo's
+    /// snapshot.
+    pub fn delete_version(&self, project_id: Uuid, id: Uuid) -> Result<bool, PersistenceError> {
+        let conn = self.connection()?;
+        let changed = conn.execute(
+            "DELETE FROM project_versions WHERE id = ?1 AND project_id = ?2",
+            params![id.to_string(), project_id.to_string()],
+        )?;
+        Ok(changed > 0)
     }
 
     pub fn insert_asset(&self, asset: &AssetRecord) -> Result<(), PersistenceError> {

@@ -1615,6 +1615,29 @@ impl DocumentSession {
         previous
     }
 
+    /// Replace the document with a stored named snapshot.
+    ///
+    /// Identity stays owned by the live project (`id`, collection, photo name,
+    /// `created_at`), so restoring an old version can never move a photo into a
+    /// different set or resurrect a deleted one. The previous document goes onto
+    /// the undo stack, which makes the restore itself undoable, and the revision
+    /// advances past both documents so preview caches cannot collide.
+    pub fn apply_snapshot(&mut self, mut snapshot: ProjectDocument, label: &str) {
+        let live = self.doc.clone();
+        snapshot.id = live.id;
+        snapshot.collection_id = live.collection_id;
+        snapshot.collection_name = live.collection_name.clone();
+        snapshot.name = live.name.clone();
+        snapshot.created_at = live.created_at.clone();
+        let previous = self.restore(snapshot);
+        push_capped(
+            &mut self.undo,
+            HistoryEntry::new(label.to_string(), previous),
+        );
+        self.redo.clear();
+        self.trim_history();
+    }
+
     pub fn undo(&mut self) -> bool {
         let Some(entry) = self.undo.pop() else {
             return false;

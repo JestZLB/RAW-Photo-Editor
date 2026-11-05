@@ -84,6 +84,10 @@ pub fn run() {
             commands::run_photo_hq_denoise,
             commands::cancel_ai_denoise,
             commands::check_ai_denoise_capability,
+            commands::list_versions,
+            commands::create_version,
+            commands::restore_version,
+            commands::delete_version,
         ])
         .run(tauri::generate_context!());
 

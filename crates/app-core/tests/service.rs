@@ -6,15 +6,15 @@ use std::time::{Duration, Instant};
 use app_core::{
     AddLayerKind, AddLayerRequest, AiCapabilityRequest, AiDenoiseRequest, AiJobInfo,
     AiJobOperation, AiJobStatus, ApiError, AppPaths, AppService, ApplyAiResultRequest,
-    CancelExportRequest, CommitChangesRequest, CreateProjectRequest, DeleteLayerRequest,
-    DuplicateLayerRequest, EventSink, ExportBitDepth, ExportColorSpace, ExportImageFormat,
-    ExportImageRequest, ExportMetadata, ExportOptions, ExportProgress, ImportLutRequest,
-    ImportPhotoRequest, ListAiJobsRequest, NoopEventSink, OpenProjectRequest,
+    CancelExportRequest, CommitChangesRequest, CreateProjectRequest, CreateVersionRequest,
+    DeleteLayerRequest, DuplicateLayerRequest, EventSink, ExportBitDepth, ExportColorSpace,
+    ExportImageFormat, ExportImageRequest, ExportMetadata, ExportOptions, ExportProgress,
+    ImportLutRequest, ImportPhotoRequest, ListAiJobsRequest, NoopEventSink, OpenProjectRequest,
     PhotoHqDenoiseRequest, PickWhiteBalanceRequest, ProjectIdRequest, ProviderConfigInput,
     ProviderKind, RenameCollectionRequest, RenameProjectRequest, RenderPreviewRequest,
     SetCropRequest, SetLayerMaskRequest, SetProviderCredentialRequest, SubmitAiJobRequest,
-    SyncColorAdjustmentsRequest, UpdateLayerParamsRequest, UpdateLayerRequest, WatermarkOptions,
-    WatermarkPosition,
+    SyncColorAdjustmentsRequest, UpdateLayerParamsRequest, UpdateLayerRequest, VersionIdRequest,
+    WatermarkOptions, WatermarkPosition,
 };
 use document::{
     ColorParams, CropRect, LayerMask, LayerPatch, MaskGradient, MaskGradientKind, MaskPoint,
@@ -237,6 +237,116 @@ fn meta_update_returns_the_envelope_without_layers() {
         })
         .unwrap();
     assert_eq!(reopened.layers.last().unwrap().color.unwrap().exposure, 0.5);
+}
+
+/// Versions are the only history that survives a restart, and restoring one must
+/// stay undoable — otherwise a mistaken restore would destroy work.
+#[test]
+fn named_versions_survive_a_restart_and_restore_as_undoable_steps() {
+    let app = TestApp::new();
+    let state = import(&app);
+    let state = app
+        .service
+        .add_layer(AddLayerRequest {
+            project_id: state.id.clone(),
+            kind: AddLayerKind::Color,
+            name: None,
+            portrait: None,
+            mask: None,
+        })
+        .unwrap();
+    let project_id = state.id.clone();
+    let layer_id = state.layers.last().unwrap().id.clone();
+
+    let mut params = ColorParams {
+        exposure: 1.0,
+        ..Default::default()
+    };
+    app.service
+        .update_layer_params(UpdateLayerParamsRequest {
+            project_id: project_id.clone(),
+            layer_id: layer_id.clone(),
+            color: Some(params),
+            portrait: None,
+            retouch: None,
+        })
+        .unwrap();
+    app.service
+        .commit_changes(CommitChangesRequest {
+            project_id: project_id.clone(),
+            label: "曝光 1".into(),
+        })
+        .unwrap();
+
+    let versions = app
+        .service
+        .create_version(CreateVersionRequest {
+            project_id: project_id.clone(),
+            name: "暖调".into(),
+        })
+        .unwrap();
+    assert_eq!(versions.len(), 1);
+    assert_eq!(versions[0].name, "暖调");
+    let version_id = versions[0].id.clone();
+
+    params.exposure = 2.0;
+    app.service
+        .update_layer_params(UpdateLayerParamsRequest {
+            project_id: project_id.clone(),
+            layer_id: layer_id.clone(),
+            color: Some(params),
+            portrait: None,
+            retouch: None,
+        })
+        .unwrap();
+    app.service
+        .commit_changes(CommitChangesRequest {
+            project_id: project_id.clone(),
+            label: "曝光 2".into(),
+        })
+        .unwrap();
+
+    let restored = app
+        .service
+        .restore_version(VersionIdRequest {
+            project_id: project_id.clone(),
+            version_id: version_id.clone(),
+        })
+        .unwrap();
+    let exposure = |state: &app_core::DocumentState| {
+        state
+            .layers
+            .iter()
+            .find(|layer| layer.id == layer_id)
+            .and_then(|layer| layer.color)
+            .map(|color| color.exposure)
+            .unwrap()
+    };
+    assert_eq!(exposure(&restored), 1.0);
+    assert_eq!(restored.history.last().unwrap(), "恢复版本：暖调");
+
+    let undone = app
+        .service
+        .undo(ProjectIdRequest {
+            project_id: project_id.clone(),
+        })
+        .unwrap();
+    assert_eq!(exposure(&undone), 2.0);
+
+    // A second service over the same directory is an application restart.
+    let restarted = AppService::with_event_sink(
+        AppPaths::new(app.dir.path().join("data"), app.dir.path().join("cache")),
+        Arc::new(NoopEventSink),
+    )
+    .unwrap();
+    let listed = restarted
+        .list_versions(ProjectIdRequest {
+            project_id: project_id.clone(),
+        })
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].name, "暖调");
+    assert_eq!(listed[0].id, version_id);
 }
 
 #[test]

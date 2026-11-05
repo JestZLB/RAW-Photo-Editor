@@ -340,6 +340,10 @@ interface DocumentState {
 | `render_preview` | `{ projectId: string; maxDimension?: number }` | `PreviewResult` |
 | `update_layer_params` | `{ projectId: string; layerId: string; color?: ColorParams; portrait?: PortraitParams }` | `DocumentState`（不提交历史） |
 | `update_layer_params_meta` | 同 `update_layer_params` | `DocumentState`（`layers` 恒为空数组，只用于合并 `revision` / 历史；拖动中每 ~70ms 的高频写入走这里，避免整份蒙版与修复点在 IPC 上往返） |
+| `list_versions` | `{ projectId: string }` | `VersionSummary[]`（按创建时间倒序，最多 200 条；不含文档 JSON） |
+| `create_version` | `{ projectId: string; name: string }` | `VersionSummary[]`（保存当前文档快照；名称裁剪空白后 1..60 字符，超限返回 `INVALID_ARGUMENT`；每项目超过 50 个时丢弃最旧） |
+| `restore_version` | `{ projectId: string; versionId: string }` | `DocumentState`（恢复快照；项目 id / 照片集 / 照片名保持不变，revision 前进，并写入一条可撤销历史「恢复版本：名称」） |
+| `delete_version` | `{ projectId: string; versionId: string }` | `VersionSummary[]`（按 projectId 限定，越权 id 视为不存在） |
 | `commit_changes` | `{ projectId: string; label: string }` | `DocumentState`（将本次连续修改合并为一条历史） |
 | `set_layer_mask` | `{ projectId: string; layerId: string; mask: LayerMask \| null }` | `DocumentState`（仅调色/人像图层；含画笔、自动肤色、渐变、反转、羽化与密度；每次调用提交一条历史） |
 | `pick_white_balance` | `{ projectId: string; x: number; y: number }` | `WhiteBalanceResult`（x/y 为原始源图归一化坐标，只读采样，不修改文档） |
@@ -586,6 +590,7 @@ Mock Provider 完全本地执行，不上传图片；OpenAI 兼容 Provider 仅�
 - `update_layer_params` 只改内存文档；`commit_changes` 才生成一条撤销记录并触发自动保存。滑块拖动必须使用该组合。
 - `update_layer` 中仅含 `opacity` 的补丁同样是为拖动服务，不生成历史；前端松开滑块后调用 `commit_changes`。可见性/混合模式等离散补丁立即生成一条历史。
 - `render_preview.maxDimension` 由前端设置页决定（1200/1600/2048），后端上限 8192；缓存键包含 revision 与该尺寸。
+- `*_version` 系列的成功响应只保证 `DocumentState` 的语义；`restore_version` 返回的文档已包含快照内容，调用方应整体替换当前文档而不是局部合并。版本快照存于 SQLite，删除照片时随外键级联清理。
 - 拖动滑块时前端请求 900px 的交互档位，静止约 420ms 后自动回到设置档位；两档写入各自的缓存键，最终像素与导出不受影响。`update_layer_params_meta` 的响应不可当作文档使用。
 - 图层顺序即渲染顺序；base 图层不可删除、不可调整参数。`duplicate_layer` 复制除 base 外的任意图层，参数与蒙版一并复制，副本默认解锁。
 - 跨照片复用参数由前端完成：只复制调色或人像参数，不携带蒙版、裁剪、五官几何或 AI 资产；粘贴时按当前照片重新解析几何，为对应调整图层创建/复用并提交历史。`bodyMode` 跟随目标图层，不会因粘贴把人像层意外切成身体层。
