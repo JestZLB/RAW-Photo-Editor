@@ -420,9 +420,11 @@ impl AppService {
         self.store_histogram(&cache_path, &histogram);
         self.assets.ensure_project_dirs(project_id)?;
         encode_atomic(&cache_path, &encoded, OutputFormat::Png, 100)?;
-        let _ = self
-            .assets
-            .prune_render_previews(project_id, RENDER_PREVIEW_KEEP, Some(document.revision));
+        let _ = self.assets.prune_render_previews(
+            project_id,
+            RENDER_PREVIEW_KEEP,
+            Some(document.revision),
+        );
         Ok(PreviewResult {
             path: cache_path.to_string_lossy().to_string(),
             width: encoded.width,
@@ -1092,14 +1094,13 @@ impl AppService {
         )?;
         let (icc, written_space) =
             self.apply_export_color_space(&document, &mut raster, options.color_space)?;
-        let (exif, mut metadata_written, keeps_location) = if options.format
-            == ExportImageFormat::Webp
-        {
-            // The VP8L encoder carries neither EXIF nor an ICC profile.
-            (None, false, false)
-        } else {
-            self.prepare_export_exif(&document, options.metadata)?
-        };
+        let (exif, mut metadata_written, keeps_location) =
+            if options.format == ExportImageFormat::Webp {
+                // The VP8L encoder carries neither EXIF nor an ICC profile.
+                (None, false, false)
+            } else {
+                self.prepare_export_exif(&document, options.metadata)?
+            };
         let existed = target.exists();
         let bytes = encode_atomic_image(
             &target,
@@ -1285,13 +1286,10 @@ impl AppService {
             Ok((
                 project.session.document().clone(),
                 project.regions_analysed.then(|| project.regions.clone()),
-                project.detection.as_ref().map(|detection| {
-                    (
-                        detection.faces.clone(),
-                        detection.width,
-                        detection.height,
-                    )
-                }),
+                project
+                    .detection
+                    .as_ref()
+                    .map(|detection| (detection.faces.clone(), detection.width, detection.height)),
             ))
         })?;
         let faces = match cached {

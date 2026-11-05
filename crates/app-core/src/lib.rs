@@ -29,9 +29,8 @@ pub use requests::{
     ImportPhotoBytesRequest, ImportPhotoRequest, ListAiJobsRequest, MoveLayerRequest,
     OpenProjectRequest, PhotoHqDenoiseRequest, PickWhiteBalanceRequest, ProjectIdRequest,
     ProviderIdRequest, RenameCollectionRequest, RenameProjectRequest, RenderPreviewRequest,
-    SaveProviderConfigRequest,
-    SetCropRequest, SetLayerMaskRequest, SetProviderCredentialRequest, SubmitAiJobRequest,
-    SubmitAiJobResponse, SyncColorAdjustmentsRequest, TestProviderRequest,
+    SaveProviderConfigRequest, SetCropRequest, SetLayerMaskRequest, SetProviderCredentialRequest,
+    SubmitAiJobRequest, SubmitAiJobResponse, SyncColorAdjustmentsRequest, TestProviderRequest,
     UpdateLayerParamsRequest, UpdateLayerRequest,
 };
 pub use service::{

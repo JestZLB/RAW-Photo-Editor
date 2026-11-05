@@ -56,13 +56,21 @@ impl AppService {
                 continue;
             }
             indexes.insert(project.collection_id.clone(), collections.len());
-            latest_photos.push(if has_photo { Some(project.id.clone()) } else { None });
+            latest_photos.push(if has_photo {
+                Some(project.id.clone())
+            } else {
+                None
+            });
             collections.push(CollectionSummary {
                 id: project.collection_id,
                 name: project.collection_name,
                 photo_count: usize::from(has_photo),
                 updated_at: project.updated_at,
-                cover_thumbnail_path: if has_photo { project.thumbnail_path } else { None },
+                cover_thumbnail_path: if has_photo {
+                    project.thumbnail_path
+                } else {
+                    None
+                },
                 latest_project_id: project.id,
             });
         }
@@ -196,203 +204,206 @@ impl AppService {
     }
 
     /// Rename a photo set. Every project in the collection stores its own copy of
-/// `collectionName`, so all of them are rewritten; open sessions are updated in
-/// memory as well. Metadata only: no revision bump, no undo entry.
-pub fn rename_collection(&self, request: RenameCollectionRequest) -> Result<(), ApiError> {
-    let collection_id = parse_uuid(&request.collection_id, "collection")?;
-    let name = normalize_project_name(&request.name)?;
-    let summaries = self.db.list_project_summaries()?;
-    let members: Vec<Uuid> = summaries
-        .iter()
-        .filter(|summary| summary.collection_id == collection_id)
-        .map(|summary| summary.id)
-        .collect();
-    if members.is_empty() {
-        return Err(ApiError::invalid_argument(
-            "collection does not exist",
-            "这个照片集不存在或已被删除。",
-        ));
-    }
-    for project_id in &members {
-        let record = self
-            .db
-            .get_project(*project_id)?
-            .ok_or_else(ApiError::project_not_found)?;
-        let mut document: ProjectDocument = serde_json::from_str(&record.document_json)
-            .map_err(|error| ApiError::internal(error.to_string()))?;
-        document.collection_name = name.clone();
-        let document_json =
-            serde_json::to_string(&document).map_err(|error| ApiError::internal(error.to_string()))?;
-        self.db.save_project(&persistence::ProjectRecord {
-            collection_name: name.clone(),
-            document_json,
-            ..record
-        })?;
-    }
-    let mut sessions = self
-        .sessions
-        .lock()
-        .map_err(|_| ApiError::internal("session lock is poisoned"))?;
-    for project_id in &members {
-        if let Some(project) = sessions.touch(*project_id) {
-            project.session.rename_collection(name.clone());
+    /// `collectionName`, so all of them are rewritten; open sessions are updated in
+    /// memory as well. Metadata only: no revision bump, no undo entry.
+    pub fn rename_collection(&self, request: RenameCollectionRequest) -> Result<(), ApiError> {
+        let collection_id = parse_uuid(&request.collection_id, "collection")?;
+        let name = normalize_project_name(&request.name)?;
+        let summaries = self.db.list_project_summaries()?;
+        let members: Vec<Uuid> = summaries
+            .iter()
+            .filter(|summary| summary.collection_id == collection_id)
+            .map(|summary| summary.id)
+            .collect();
+        if members.is_empty() {
+            return Err(ApiError::invalid_argument(
+                "collection does not exist",
+                "这个照片集不存在或已被删除。",
+            ));
         }
-    }
-    Ok(())
-}
-
-/// Replace the colour stack of every listed photo with the source photo's
-/// colour stack.
-///
-/// Only colour layers travel: crop, portrait and retouch layers depend on the
-/// source composition and measured faces, so copying them would silently
-/// misplace masks and warps on a different photo. Masks inside colour layers are
-/// normalized, so they remain valid. LUT files are project-scoped, so each
-/// target gets its own managed copy; an unreadable LUT is dropped instead of
-/// leaving a dangling reference.
-pub fn sync_color_adjustments(
-    &self,
-    request: SyncColorAdjustmentsRequest,
-) -> Result<SyncColorAdjustmentsResult, ApiError> {
-    let source_id = parse_uuid(&request.source_project_id, "project")?;
-    let source = self
-        .db
-        .get_project(source_id)?
-        .ok_or_else(ApiError::project_not_found)?;
-    let (templates, lut_payloads) = self.session(source_id, |project| {
-        let mut templates: Vec<Layer> = Vec::new();
-        let mut luts: std::collections::HashMap<Uuid, Vec<u8>> = std::collections::HashMap::new();
-        for layer in project.session.document().layers.iter() {
-            if layer.kind != LayerKind::Color || layer.color.is_none() {
-                continue;
+        for project_id in &members {
+            let record = self
+                .db
+                .get_project(*project_id)?
+                .ok_or_else(ApiError::project_not_found)?;
+            let mut document: ProjectDocument = serde_json::from_str(&record.document_json)
+                .map_err(|error| ApiError::internal(error.to_string()))?;
+            document.collection_name = name.clone();
+            let document_json = serde_json::to_string(&document)
+                .map_err(|error| ApiError::internal(error.to_string()))?;
+            self.db.save_project(&persistence::ProjectRecord {
+                collection_name: name.clone(),
+                document_json,
+                ..record
+            })?;
+        }
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| ApiError::internal("session lock is poisoned"))?;
+        for project_id in &members {
+            if let Some(project) = sessions.touch(*project_id) {
+                project.session.rename_collection(name.clone());
             }
-            templates.push(layer.clone());
-            let lut_id = layer
-                .color
-                .filter(document::ColorParams::uses_lut)
-                .and_then(|color| color.lut_asset_id)
-                .filter(|id| !luts.contains_key(id));
-            if let Some(lut_id) = lut_id {
-                let record = self.db.get_asset(lut_id).ok().flatten();
-                if let Some(record) = record {
-                    if let Ok(bytes) = std::fs::read(&record.path) {
-                        luts.insert(lut_id, bytes);
+        }
+        Ok(())
+    }
+
+    /// Replace the colour stack of every listed photo with the source photo's
+    /// colour stack.
+    ///
+    /// Only colour layers travel: crop, portrait and retouch layers depend on the
+    /// source composition and measured faces, so copying them would silently
+    /// misplace masks and warps on a different photo. Masks inside colour layers are
+    /// normalized, so they remain valid. LUT files are project-scoped, so each
+    /// target gets its own managed copy; an unreadable LUT is dropped instead of
+    /// leaving a dangling reference.
+    pub fn sync_color_adjustments(
+        &self,
+        request: SyncColorAdjustmentsRequest,
+    ) -> Result<SyncColorAdjustmentsResult, ApiError> {
+        let source_id = parse_uuid(&request.source_project_id, "project")?;
+        let source = self
+            .db
+            .get_project(source_id)?
+            .ok_or_else(ApiError::project_not_found)?;
+        let (templates, lut_payloads) = self.session(source_id, |project| {
+            let mut templates: Vec<Layer> = Vec::new();
+            let mut luts: std::collections::HashMap<Uuid, Vec<u8>> =
+                std::collections::HashMap::new();
+            for layer in project.session.document().layers.iter() {
+                if layer.kind != LayerKind::Color || layer.color.is_none() {
+                    continue;
+                }
+                templates.push(layer.clone());
+                let lut_id = layer
+                    .color
+                    .filter(document::ColorParams::uses_lut)
+                    .and_then(|color| color.lut_asset_id)
+                    .filter(|id| !luts.contains_key(id));
+                if let Some(lut_id) = lut_id {
+                    let record = self.db.get_asset(lut_id).ok().flatten();
+                    if let Some(record) = record {
+                        if let Ok(bytes) = std::fs::read(&record.path) {
+                            luts.insert(lut_id, bytes);
+                        }
                     }
                 }
             }
+            Ok((templates, luts))
+        })?;
+        if templates.is_empty() {
+            return Err(ApiError::invalid_argument(
+                "source project has no colour adjustment",
+                "当前照片还没有调色调整，先调好一张再同步。",
+            ));
         }
-        Ok((templates, luts))
-    })?;
-    if templates.is_empty() {
-        return Err(ApiError::invalid_argument(
-            "source project has no colour adjustment",
-            "当前照片还没有调色调整，先调好一张再同步。",
-        ));
-    }
 
-    let mut seen = std::collections::HashSet::new();
-    let mut synced = 0usize;
-    let mut failed = Vec::new();
-    for raw in &request.project_ids {
-        let Ok(target_id) = parse_uuid(raw, "project") else {
-            failed.push(raw.clone());
-            continue;
-        };
-        if target_id == source_id || !seen.insert(target_id) {
-            continue;
-        }
-        let target = self.db.get_project(target_id)?;
-        let Some(target) = target else {
-            failed.push(target_id.to_string());
-            continue;
-        };
-        if target.collection_id != source.collection_id {
-            failed.push(target.name);
-            continue;
-        }
-        match self.apply_color_templates(target_id, &templates, &lut_payloads) {
-            Ok(()) => synced += 1,
-            Err(_) => failed.push(target.name),
-        }
-    }
-    Ok(SyncColorAdjustmentsResult { synced, failed })
-}
-
-fn apply_color_templates(
-    &self,
-    target_id: Uuid,
-    templates: &[Layer],
-    lut_payloads: &std::collections::HashMap<Uuid, Vec<u8>>,
-) -> Result<(), ApiError> {
-    // Copy LUT files before touching the document so a failed copy leaves the
-    // target untouched; assets created here are removed again if the document
-    // mutation fails.
-    let mut created_assets = Vec::new();
-    let mut lut_ids = std::collections::HashMap::new();
-    let outcome = (|| -> Result<(), ApiError> {
-        for template in templates {
-            let source_lut = template
-                .color
-                .and_then(|color| color.lut_asset_id)
-                .filter(|id| lut_payloads.contains_key(id));
-            let Some(source_lut) = source_lut else {
-                lut_ids.insert(template.id, None);
+        let mut seen = std::collections::HashSet::new();
+        let mut synced = 0usize;
+        let mut failed = Vec::new();
+        for raw in &request.project_ids {
+            let Ok(target_id) = parse_uuid(raw, "project") else {
+                failed.push(raw.clone());
                 continue;
             };
-            let bytes = &lut_payloads[&source_lut];
-            let asset_id = Uuid::new_v4();
-            self.assets.ensure_project_dirs(target_id)?;
-            let path = self.assets.lut_path(target_id, asset_id);
-            self.assets.write_atomic(&path, bytes)?;
-            self.db.insert_asset(&AssetRecord {
-                id: asset_id,
-                project_id: target_id,
-                kind: "lut".to_string(),
-                path: path.to_string_lossy().to_string(),
-                width: 0,
-                height: 0,
-                bytes: bytes.len() as u64,
-                created_at: now_rfc3339(),
-            })?;
-            created_assets.push(asset_id);
-            lut_ids.insert(template.id, Some(asset_id));
+            if target_id == source_id || !seen.insert(target_id) {
+                continue;
+            }
+            let target = self.db.get_project(target_id)?;
+            let Some(target) = target else {
+                failed.push(target_id.to_string());
+                continue;
+            };
+            if target.collection_id != source.collection_id {
+                failed.push(target.name);
+                continue;
+            }
+            match self.apply_color_templates(target_id, &templates, &lut_payloads) {
+                Ok(()) => synced += 1,
+                Err(_) => failed.push(target.name),
+            }
         }
-        self.session(target_id, |project| {
-            project.session.try_mutate(|document| {
-                let insert_at = document
-                    .layers
-                    .iter()
-                    .position(|layer| layer.kind == LayerKind::Color)
-                    .unwrap_or_else(|| document.layers.len().min(1));
-                document.layers.retain(|layer| layer.kind != LayerKind::Color);
-                let insert_at = insert_at.min(document.layers.len());
-                for (offset, template) in templates.iter().enumerate() {
-                    let mut layer = template.clone();
-                    layer.id = Uuid::new_v4();
-                    layer.created_at = now_rfc3339();
-                    layer.locked = false;
-                    if let Some(color) = layer.color.as_mut() {
-                        color.lut_asset_id = lut_ids.get(&template.id).copied().flatten();
-                    }
-                    document.layers.insert(insert_at + offset, layer);
-                }
-                Ok::<(), ApiError>(())
-            })?;
-            project.session.commit("同步调色调整");
-            project.request_save();
-            Ok(())
-        })
-    })();
-    if outcome.is_err() {
-        for asset_id in created_assets {
-            let _ = std::fs::remove_file(self.assets.lut_path(target_id, asset_id));
-            let _ = self.db.delete_asset(asset_id);
-        }
+        Ok(SyncColorAdjustmentsResult { synced, failed })
     }
-    outcome
-}
 
-pub fn delete_project(&self, request: ProjectIdRequest) -> Result<(), ApiError> {
+    fn apply_color_templates(
+        &self,
+        target_id: Uuid,
+        templates: &[Layer],
+        lut_payloads: &std::collections::HashMap<Uuid, Vec<u8>>,
+    ) -> Result<(), ApiError> {
+        // Copy LUT files before touching the document so a failed copy leaves the
+        // target untouched; assets created here are removed again if the document
+        // mutation fails.
+        let mut created_assets = Vec::new();
+        let mut lut_ids = std::collections::HashMap::new();
+        let outcome = (|| -> Result<(), ApiError> {
+            for template in templates {
+                let source_lut = template
+                    .color
+                    .and_then(|color| color.lut_asset_id)
+                    .filter(|id| lut_payloads.contains_key(id));
+                let Some(source_lut) = source_lut else {
+                    lut_ids.insert(template.id, None);
+                    continue;
+                };
+                let bytes = &lut_payloads[&source_lut];
+                let asset_id = Uuid::new_v4();
+                self.assets.ensure_project_dirs(target_id)?;
+                let path = self.assets.lut_path(target_id, asset_id);
+                self.assets.write_atomic(&path, bytes)?;
+                self.db.insert_asset(&AssetRecord {
+                    id: asset_id,
+                    project_id: target_id,
+                    kind: "lut".to_string(),
+                    path: path.to_string_lossy().to_string(),
+                    width: 0,
+                    height: 0,
+                    bytes: bytes.len() as u64,
+                    created_at: now_rfc3339(),
+                })?;
+                created_assets.push(asset_id);
+                lut_ids.insert(template.id, Some(asset_id));
+            }
+            self.session(target_id, |project| {
+                project.session.try_mutate(|document| {
+                    let insert_at = document
+                        .layers
+                        .iter()
+                        .position(|layer| layer.kind == LayerKind::Color)
+                        .unwrap_or_else(|| document.layers.len().min(1));
+                    document
+                        .layers
+                        .retain(|layer| layer.kind != LayerKind::Color);
+                    let insert_at = insert_at.min(document.layers.len());
+                    for (offset, template) in templates.iter().enumerate() {
+                        let mut layer = template.clone();
+                        layer.id = Uuid::new_v4();
+                        layer.created_at = now_rfc3339();
+                        layer.locked = false;
+                        if let Some(color) = layer.color.as_mut() {
+                            color.lut_asset_id = lut_ids.get(&template.id).copied().flatten();
+                        }
+                        document.layers.insert(insert_at + offset, layer);
+                    }
+                    Ok::<(), ApiError>(())
+                })?;
+                project.session.commit("同步调色调整");
+                project.request_save();
+                Ok(())
+            })
+        })();
+        if outcome.is_err() {
+            for asset_id in created_assets {
+                let _ = std::fs::remove_file(self.assets.lut_path(target_id, asset_id));
+                let _ = self.db.delete_asset(asset_id);
+            }
+        }
+        outcome
+    }
+
+    pub fn delete_project(&self, request: ProjectIdRequest) -> Result<(), ApiError> {
         let project_id = parse_uuid(&request.project_id, "project")?;
         if self.db.get_project(project_id)?.is_none() {
             return Err(ApiError::project_not_found());

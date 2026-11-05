@@ -233,10 +233,7 @@ pub fn apply_portrait_adjustments(image: &mut LinearImage, params: &PortraitPara
     let mut mean_cr = 0.5f32;
     let mut mean_cb = 0.5f32;
     let mut has_mean = false;
-    if face_mode
-        && needs_skin
-        && (p.even_skin > 0.0 || p.dark_circle > 0.0 || p.eye_bag > 0.0)
-    {
+    if face_mode && needs_skin && (p.even_skin > 0.0 || p.dark_circle > 0.0 || p.eye_bag > 0.0) {
         let mut weight_sum = 0.0f32;
         let mut cr_sum = 0.0f32;
         let mut cb_sum = 0.0f32;
@@ -315,7 +312,11 @@ pub fn apply_portrait_adjustments(image: &mut LinearImage, params: &PortraitPara
         None
     };
     let masks = fine::FineMasks {
-        face: if needs_skin { Some(skin.as_slice()) } else { None },
+        face: if needs_skin {
+            Some(skin.as_slice())
+        } else {
+            None
+        },
         body: if needs_body {
             Some(body.as_slice())
         } else {

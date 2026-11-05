@@ -455,16 +455,20 @@ pub fn render_document(
                 }
                 // The mask drives both compositing and body reshaping, so it is
                 // rasterized once on the pre-layer pixels (auto-skin uses them).
-                let coverage = layer.mask.as_ref().filter(|mask| !mask.is_empty()).map(|mask| {
-                    rasterize_mask(
-                        mask,
-                        &current,
-                        source.width,
-                        source.height,
-                        current.width,
-                        current.height,
-                    )
-                });
+                let coverage = layer
+                    .mask
+                    .as_ref()
+                    .filter(|mask| !mask.is_empty())
+                    .map(|mask| {
+                        rasterize_mask(
+                            mask,
+                            &current,
+                            source.width,
+                            source.height,
+                            current.width,
+                            current.height,
+                        )
+                    });
                 if layer_can_apply_in_place(layer) && coverage.is_none() {
                     apply_portrait_adjustments(&mut current, &params);
                     continue;
@@ -736,10 +740,8 @@ fn apply_liquify_strokes(
         let mut source = vec![[0.0f32; 2]; box_width * box_height];
         for y in 0..box_height {
             for x in 0..box_width {
-                source[y * box_width + x] = [
-                    left as f32 + x as f32 + 0.5,
-                    top as f32 + y as f32 + 0.5,
-                ];
+                source[y * box_width + x] =
+                    [left as f32 + x as f32 + 0.5, top as f32 + y as f32 + 0.5];
             }
         }
         // Snapshot only the affected region; a local stroke should not clone a
@@ -757,11 +759,7 @@ fn apply_liquify_strokes(
                 } else {
                     points[index - 1]
                 };
-                let (bx, by) = if index == 0 {
-                    points[1]
-                } else {
-                    points[index]
-                };
+                let (bx, by) = if index == 0 { points[1] } else { points[index] };
                 let length = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt();
                 if length > 1e-3 {
                     dx = (bx - ax) / length;
@@ -819,9 +817,7 @@ fn apply_liquify_strokes(
             for x in left..=right {
                 let slot = (y - top) * box_width + (x - left);
                 let [sx, sy] = source[slot];
-                if (sx - (x as f32 + 0.5)).abs() < 1e-4
-                    && (sy - (y as f32 + 0.5)).abs() < 1e-4
-                {
+                if (sx - (x as f32 + 0.5)).abs() < 1e-4 && (sy - (y as f32 + 0.5)).abs() < 1e-4 {
                     continue;
                 }
                 let sampled = sample_box_bilinear(
@@ -838,13 +834,7 @@ fn apply_liquify_strokes(
     }
 }
 
-fn sample_box_bilinear(
-    snapshot: &[f32],
-    width: usize,
-    height: usize,
-    x: f32,
-    y: f32,
-) -> [f32; 4] {
+fn sample_box_bilinear(snapshot: &[f32], width: usize, height: usize, x: f32, y: f32) -> [f32; 4] {
     let x = x.clamp(0.0, width as f32 - 1.0);
     let y = y.clamp(0.0, height as f32 - 1.0);
     let x0 = x.floor() as usize;
@@ -2036,20 +2026,9 @@ mod tests {
             doc.layers.push(layer);
             doc
         };
-        let base = render_document(
-            &build(0.0),
-            &src,
-            None,
-            &StaticResolver::default(),
-        )
-        .unwrap();
-        let warped = render_document(
-            &build(100.0),
-            &src,
-            None,
-            &StaticResolver::default(),
-        )
-        .unwrap();
+        let base = render_document(&build(0.0), &src, None, &StaticResolver::default()).unwrap();
+        let warped =
+            render_document(&build(100.0), &src, None, &StaticResolver::default()).unwrap();
         let row = 115u32;
         let stripe = |image: &LinearImage| {
             (0..width)
@@ -2112,7 +2091,8 @@ mod tests {
                 strength: 1.0,
                 mode: document::LiquifyMode::Push,
             });
-            retouch.freeze_grid = vec![false; document::FREEZE_GRID_COLS * document::FREEZE_GRID_ROWS];
+            retouch.freeze_grid =
+                vec![false; document::FREEZE_GRID_COLS * document::FREEZE_GRID_ROWS];
             for column in 0..document::FREEZE_GRID_COLS {
                 retouch.freeze_grid[8 * document::FREEZE_GRID_COLS + column] = true;
             }

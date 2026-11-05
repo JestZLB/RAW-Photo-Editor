@@ -120,7 +120,6 @@ impl Geometry {
             },
         }
     }
-
 }
 
 /// Pre-rasterized coverage of eyes, brows, mouth and teeth. Defect and wrinkle
@@ -335,10 +334,7 @@ fn apply_whiten(
             let desat = (0.30 + 0.45 * extra_desat.clamp(0.0, 1.0)) * weight;
             let luminance = clamp01(
                 luminance
-                    + (1.0 - luminance)
-                        * 0.10
-                        * weight
-                        * (1.0 - smoothstep(0.82, 1.0, luminance)),
+                    + (1.0 - luminance) * 0.10 * weight * (1.0 - smoothstep(0.82, 1.0, luminance)),
             );
             let cb = 0.5 + (cb - 0.5) * (1.0 - desat) - warmth * 0.004 * weight;
             let cr = 0.5 + (cr - 0.5) * (1.0 - desat) + warmth * 0.010 * weight;
@@ -422,12 +418,7 @@ fn apply_rosy(
 
 /// Compress specular highlights on skin (oil/shine control). `exclusion`
 /// carries the feature guard on face layers and the face guard on body layers.
-fn apply_oil_control(
-    image: &mut LinearImage,
-    mask: &[f32],
-    exclusion: &[f32],
-    amount: f32,
-) {
+fn apply_oil_control(image: &mut LinearImage, mask: &[f32], exclusion: &[f32], amount: f32) {
     if amount <= 0.0 {
         return;
     }
@@ -457,7 +448,8 @@ fn apply_oil_control(
             .map(clamp01);
             let (luminance, cb, cr) = rgb_to_ycbcr(srgb[0], srgb[1], srgb[2]);
             let chroma = ((cb - 0.5).abs() + (cr - 0.5).abs()) * 2.0;
-            let specular = smoothstep(0.62, 0.86, luminance) * (1.0 - smoothstep(0.06, 0.18, chroma));
+            let specular =
+                smoothstep(0.62, 0.86, luminance) * (1.0 - smoothstep(0.06, 0.18, chroma));
             let weight = base * amount * specular;
             if weight <= 1e-4 {
                 continue;
@@ -500,8 +492,8 @@ fn apply_eye_white(image: &mut LinearImage, geometry: &Geometry, amount: f32) {
                 .map(clamp01);
                 let (luminance, cb, cr) = rgb_to_ycbcr(srgb[0], srgb[1], srgb[2]);
                 let chroma = ((cb - 0.5).abs() + (cr - 0.5).abs()) * 2.0;
-                let sclera = smoothstep(0.45, 0.72, luminance)
-                    * (1.0 - smoothstep(0.08, 0.22, chroma));
+                let sclera =
+                    smoothstep(0.45, 0.72, luminance) * (1.0 - smoothstep(0.08, 0.22, chroma));
                 let weight = alpha * sclera;
                 if weight <= 1e-4 {
                     continue;
@@ -774,16 +766,12 @@ fn apply_eye_enhance(image: &mut LinearImage, geometry: &Geometry, amount: f32) 
                     local.data[index + 2],
                 );
                 let detail = ((value - blurred) / value).clamp(-0.8, 0.8);
-                let lift = 0.12 * alpha * (1.0 - value.clamp(0.0, 1.0))
-                    * smoothstep(0.01, 0.15, value);
+                let lift =
+                    0.12 * alpha * (1.0 - value.clamp(0.0, 1.0)) * smoothstep(0.01, 0.15, value);
                 let scale = (1.0 + detail * 0.50 * alpha + lift).clamp(0.65, 1.45);
-                let scaled = [
-                    base[0] * scale,
-                    base[1] * scale,
-                    base[2] * scale,
-                ]
-                .map(linear_to_srgb)
-                .map(clamp01);
+                let scaled = [base[0] * scale, base[1] * scale, base[2] * scale]
+                    .map(linear_to_srgb)
+                    .map(clamp01);
                 let (luminance, cb, cr) = rgb_to_ycbcr(scaled[0], scaled[1], scaled[2]);
                 let boost = 1.0 + 0.12 * alpha;
                 let cb = 0.5 + (cb - 0.5) * boost;
@@ -798,12 +786,7 @@ fn apply_eye_enhance(image: &mut LinearImage, geometry: &Geometry, amount: f32) 
 }
 
 /// Neutralize the yellow cast of teeth. Saturated lips stay untouched.
-fn apply_teeth_whiten(
-    image: &mut LinearImage,
-    geometry: &Geometry,
-    whiten: f32,
-    brighten: f32,
-) {
+fn apply_teeth_whiten(image: &mut LinearImage, geometry: &Geometry, whiten: f32, brighten: f32) {
     if whiten <= 0.0 && brighten <= 0.0 {
         return;
     }
@@ -935,10 +918,8 @@ fn apply_under_eye(
             .map(clamp01);
             let (luminance, cb, cr) = rgb_to_ycbcr(srgb[0], srgb[1], srgb[2]);
             let darkness = (mean_luma - luminance).max(0.0);
-            let weight = (base
-                * (1.0 - excluded * 0.35)
-                * smoothstep(0.006, 0.08, darkness))
-            .clamp(0.0, 0.9);
+            let weight = (base * (1.0 - excluded * 0.35) * smoothstep(0.006, 0.08, darkness))
+                .clamp(0.0, 0.9);
             if weight <= 1e-4 {
                 continue;
             }
@@ -1156,8 +1137,7 @@ fn apply_body_smooth(
                 let high = image.data[pixel + channel] - low.data[pixel + channel];
                 let target = low.data[pixel + channel] + high * high_scale;
                 image.data[pixel + channel] = clamp01(
-                    image.data[pixel + channel]
-                        + (target - image.data[pixel + channel]) * weight,
+                    image.data[pixel + channel] + (target - image.data[pixel + channel]) * weight,
                 );
             }
         }
@@ -1273,12 +1253,7 @@ fn apply_body_color(
 
 /// Soften small scars, stretch marks and dull patches on the body while
 /// keeping the selected face untouched.
-fn apply_body_texture(
-    image: &mut LinearImage,
-    body: &[f32],
-    face_guard: &[f32],
-    amount: f32,
-) {
+fn apply_body_texture(image: &mut LinearImage, body: &[f32], face_guard: &[f32], amount: f32) {
     if amount <= 0.0 {
         return;
     }
@@ -1422,7 +1397,7 @@ fn apply_spots(
                     * (1.0 - excluded)
                     * amount
                     * smoothstep(threshold, threshold * 5.0, defect))
-                    .clamp(0.0, 0.95);
+                .clamp(0.0, 0.95);
                 if weight <= 1e-4 {
                     continue;
                 }
@@ -1470,14 +1445,28 @@ pub(crate) fn apply_fine_repair(
         .map(|geometry| Geometry::new(&geometry, image.width, image.height));
     if masks.body_mode {
         if let Some(body) = masks.body {
-            apply_body_effects(image, params, body, geometry.as_ref(), masks.mean, intensity);
+            apply_body_effects(
+                image,
+                params,
+                body,
+                geometry.as_ref(),
+                masks.mean,
+                intensity,
+            );
         }
         return;
     }
     // Eye, teeth, under-eye and wrinkle effects need geometry, not a skin
     // mask, so they still run on a layer whose only enabled effect is one of
     // them. Skin-mask effects below check `face` themselves.
-    apply_face_effects(image, params, masks.face, geometry.as_ref(), masks.mean, intensity);
+    apply_face_effects(
+        image,
+        params,
+        masks.face,
+        geometry.as_ref(),
+        masks.mean,
+        intensity,
+    );
 }
 
 fn apply_face_effects(
@@ -1524,12 +1513,7 @@ fn apply_face_effects(
                 [spots, mole, large],
             );
         }
-        apply_oil_control(
-            image,
-            face,
-            &guard,
-            strength(params.oil_control, intensity),
-        );
+        apply_oil_control(image, face, &guard, strength(params.oil_control, intensity));
     }
     if let Some(geometry) = geometry {
         apply_wrinkle_zones(image, &wrinkle_zones, &guard);
@@ -1560,16 +1544,8 @@ fn apply_face_effects(
             strength(params.lip_tint, intensity),
             params.lip_warmth / 100.0,
         );
-        apply_eyeshadow(
-            image,
-            geometry,
-            strength(params.eyeshadow, intensity),
-        );
-        apply_brow_tint(
-            image,
-            geometry,
-            strength(params.brow_tint, intensity),
-        );
+        apply_eyeshadow(image, geometry, strength(params.eyeshadow, intensity));
+        apply_brow_tint(image, geometry, strength(params.brow_tint, intensity));
         apply_nose_contour(
             image,
             geometry,
@@ -1732,7 +1708,12 @@ mod tests {
     fn zero_fine_params_are_a_noop() {
         let mut image = skin_only(64, 64);
         let before = image.data.clone();
-        apply_fine_repair(&mut image, &PortraitParams::default(), &masks(None, None, None, false), 0.78);
+        apply_fine_repair(
+            &mut image,
+            &PortraitParams::default(),
+            &masks(None, None, None, false),
+            0.78,
+        );
         assert_eq!(image.data, before);
     }
 
@@ -1821,9 +1802,17 @@ mod tests {
         };
         let skin = crate::skin_mask(&image);
         let mean = (linear_to_srgb(luma_at(&image, 10, 10)), 0.42, 0.58);
-        apply_fine_repair(&mut image, &params, &masks(Some(&skin), None, Some(mean), false), 1.0);
+        apply_fine_repair(
+            &mut image,
+            &params,
+            &masks(Some(&skin), None, Some(mean), false),
+            1.0,
+        );
         let after = luma_at(&image, 48, 60);
-        assert!(after > before * 1.08, "shadow should lift: {before} -> {after}");
+        assert!(
+            after > before * 1.08,
+            "shadow should lift: {before} -> {after}"
+        );
     }
 
     #[test]
@@ -1844,7 +1833,12 @@ mod tests {
             ..Default::default()
         };
         let skin = crate::skin_mask(&image);
-        apply_fine_repair(&mut image, &params, &masks(Some(&skin), None, None, false), 1.0);
+        apply_fine_repair(
+            &mut image,
+            &params,
+            &masks(Some(&skin), None, None, false),
+            1.0,
+        );
         let after = (surrounding - luma_at(&image, 60, 60)).abs();
         assert!(
             after < before * 0.6,
@@ -1950,12 +1944,7 @@ mod tests {
             geometry: Some(base_geometry()),
             ..Default::default()
         };
-        apply_fine_repair(
-            &mut image,
-            &params,
-            &masks(None, None, None, false),
-            1.0,
-        );
+        apply_fine_repair(&mut image, &params, &masks(None, None, None, false), 1.0);
         let forehead_after = luma_at(&image, 80, 46);
         let glabella_after = luma_at(&image, 80, 62);
         assert!(
@@ -2017,12 +2006,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        apply_fine_repair(
-            &mut image,
-            &params,
-            &masks(None, None, None, false),
-            1.0,
-        );
+        apply_fine_repair(&mut image, &params, &masks(None, None, None, false), 1.0);
         assert!(luma_at(&image, 64, 60) > sclera_before);
         assert_eq!(luma_at(&image, 60, 60), iris_before);
     }
@@ -2046,12 +2030,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        apply_fine_repair(
-            &mut image,
-            &params,
-            &masks(None, None, None, false),
-            1.0,
-        );
+        apply_fine_repair(&mut image, &params, &masks(None, None, None, false), 1.0);
         let after = sample(&image, 60, 60);
         assert!(luma(after[0], after[1], after[2]) > luma(before[0], before[1], before[2]));
         let ycc = |pixel: [f32; 3]| {
@@ -2091,12 +2070,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        apply_fine_repair(
-            &mut image,
-            &params,
-            &masks(None, None, None, false),
-            1.0,
-        );
+        apply_fine_repair(&mut image, &params, &masks(None, None, None, false), 1.0);
         let lips_after = sample(&image, 60, 70);
         let teeth_after = sample(&image, 60, 60);
         assert!(
@@ -2116,12 +2090,7 @@ mod tests {
             geometry: Some(base_geometry()),
             ..Default::default()
         };
-        apply_fine_repair(
-            &mut image,
-            &params,
-            &masks(None, None, None, false),
-            1.0,
-        );
+        apply_fine_repair(&mut image, &params, &masks(None, None, None, false), 1.0);
         let lid_after = sample(&image, 48, 47);
         assert!(
             luma(lid_after[0], lid_after[1], lid_after[2])
@@ -2140,12 +2109,7 @@ mod tests {
             geometry: Some(base_geometry()),
             ..Default::default()
         };
-        apply_fine_repair(
-            &mut image,
-            &params,
-            &masks(None, None, None, false),
-            1.0,
-        );
+        apply_fine_repair(&mut image, &params, &masks(None, None, None, false), 1.0);
         assert!(luma_at(&image, 48, 43) < brow_before);
         assert_eq!(luma_at(&image, 80, 60), cheek_before);
     }
@@ -2159,12 +2123,7 @@ mod tests {
             geometry: Some(base_geometry()),
             ..Default::default()
         };
-        apply_fine_repair(
-            &mut image,
-            &params,
-            &masks(None, None, None, false),
-            1.0,
-        );
+        apply_fine_repair(&mut image, &params, &masks(None, None, None, false), 1.0);
         assert!(luma_at(&image, 54, 68) < luma_at(&skin_only(120, 120), 54, 68));
         assert_eq!(luma_at(&image, 80, 60), cheek_before);
     }
@@ -2226,6 +2185,9 @@ mod tests {
         };
         apply_fine_repair(&mut image, &params, &masks(None, None, None, false), 1.0);
         let after = luma_at(&image, 80, 46);
-        assert!(after > before, "the dark line should lift: {before} -> {after}");
+        assert!(
+            after > before,
+            "the dark line should lift: {before} -> {after}"
+        );
     }
 }
