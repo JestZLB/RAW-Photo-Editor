@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { getApi, type EditorApi, type EditorMode } from "../api/client";
 import { isApiError, userMessageOf } from "../api/errors";
+import { trackDocumentWrites } from "../api/saveTracking";
 import type {
   AiDenoiseCapability,
   AiJobInfo,
@@ -130,6 +131,11 @@ export /**
 const INTERACTIVE_PREVIEW_MAX = 900;
 /** Quiet period after the last live edit before the full-size render starts. */
 const INTERACTIVE_SETTLE_MS = 420;
+/**
+ * Quiet period after the last write settles before the status bar says "saved".
+ * Without it, every debounce tick during a drag would flash saved/saving.
+ */
+const SAVED_SETTLE_MS = 400;
 
 const FREEZE_GRID_COLS = 16;
 export const FREEZE_GRID_ROWS = 16;
@@ -413,6 +419,8 @@ export const useEditorStore = create<EditorState>()((set, get) => {
   let interactivePreview = false;
   let interactiveTimer: ReturnType<typeof setTimeout> | null = null;
   let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Document writes currently in flight, counted by the tracked API wrapper. */
+  let pendingWrites = 0;
 
   let pendingParams = new Map<string, ParamQueueItem>();
   let pendingLayerPatches = new Map<string, LayerPatchQueueItem>();
@@ -430,21 +438,47 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     return get().doc?.id === projectId;
   }
 
-  function markSaving(): void {
-    if (autosaveTimer !== null) clearTimeout(autosaveTimer);
-    set({ autosave: "saving" });
-    autosaveTimer = setTimeout(() => {
-      autosaveTimer = null;
-      set({ autosave: "saved" });
-    }, 900);
-  }
-
-  /** A write failed: stop pretending it was saved until one succeeds again. */
-  function markSaveFailed(): void {
+  function clearAutosaveTimer(): void {
     if (autosaveTimer !== null) {
       clearTimeout(autosaveTimer);
       autosaveTimer = null;
     }
+  }
+
+  /** Called by the tracked API when a document write leaves the renderer. */
+  function markWriteStart(): void {
+    pendingWrites += 1;
+    clearAutosaveTimer();
+    if (get().autosave !== "saving") set({ autosave: "saving" });
+  }
+
+  /**
+   * Called when a write settles. "saved" only appears once every in-flight
+   * write finished and a short quiet period passed, so a slow disk can no longer
+   * show a premature success (the previous 900 ms timer could, because it was
+   * started before the write resolved).
+   */
+  function markWriteSettled(ok: boolean): void {
+    pendingWrites = Math.max(0, pendingWrites - 1);
+    if (!ok) {
+      markSaveFailed();
+      return;
+    }
+    if (pendingWrites > 0) return;
+    clearAutosaveTimer();
+    autosaveTimer = setTimeout(() => {
+      autosaveTimer = null;
+      if (pendingWrites > 0) return;
+      // A failure stays visible until a later write succeeds again.
+      if (get().autosave === "error") return;
+      set({ autosave: "saved" });
+    }, SAVED_SETTLE_MS);
+  }
+
+  /** A write failed: stop pretending it was saved until one succeeds again. */
+  function markSaveFailed(): void {
+    pendingWrites = 0;
+    clearAutosaveTimer();
     set({ autosave: "error" });
   }
 
@@ -767,7 +801,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     const api = get().api;
     const doc = get().doc;
     if (!api || !doc) return true;
-    markSaving();
     try {
       const next = await api.commitChanges({
         projectId: doc.id,
@@ -884,7 +917,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     const api = get().api;
     const doc = get().doc;
     if (!api || !doc) return;
-    markSaving();
     try {
       const next = await api.commitChanges({ projectId: doc.id, label });
       applyDocument(next);
@@ -918,7 +950,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     if (!api || !doc || !layer) return;
     const previous = layer.mask;
     patchLocalLayer(layerId, (item) => ({ ...item, mask: nextMask }));
-    markSaving();
     await flushSync();
     try {
       const next = await api.setLayerMask({ projectId: doc.id, layerId, mask: nextMask });
@@ -1068,7 +1099,12 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     bootstrap: async () => {
       if (bootstrapPromise) return bootstrapPromise;
       bootstrapPromise = (async () => {
-        const api = getApi();
+        // Wrapping here is what makes the status bar truthful: the indicator is
+        // driven by write completion, not by a timer started before the write.
+        const api = trackDocumentWrites(getApi(), {
+          start: markWriteStart,
+          settle: markWriteSettled,
+        });
         set({ api, mode: api.mode });
         const [infoResult, projectsResult, collectionsResult, providersResult] =
           await Promise.allSettled([
@@ -1505,7 +1541,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         return;
       }
       await flushSync();
-      markSaving();
       try {
         const next = await api.setCrop({ projectId: doc.id, crop: absolute });
         applyDocument(next);
@@ -1534,7 +1569,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         return;
       }
       await flushSync();
-      markSaving();
       try {
         const next = await api.setCrop({
           projectId: doc.id,
@@ -1593,7 +1627,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const warp = latest?.retouch?.warp ?? [];
       const freeze = latest?.retouch?.freeze ?? [];
       const freezeGrid = latest?.retouch?.freezeGrid ?? [];
-      markSaving();
       try {
         const next = await api.updateLayerParams({
           projectId: doc.id,
@@ -1624,7 +1657,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const warp = [...(latest?.retouch?.warp ?? []), stroke];
       const freeze = latest?.retouch?.freeze ?? [];
       const freezeGrid = latest?.retouch?.freezeGrid ?? [];
-      markSaving();
       try {
         const next = await api.updateLayerParams({
           projectId: doc.id,
@@ -1652,7 +1684,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       if (!layer) return;
       const latest = get().doc?.layers.find((item) => item.id === layer.id);
       const retouch = latest?.retouch;
-      markSaving();
       try {
         const next = await api.updateLayerParams({
           projectId: doc.id,
@@ -1678,7 +1709,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const layer = doc?.layers.find((item) => item.kind === "retouch") ?? null;
       if (!api || !doc || !layer?.retouch) return;
       const retouch = layer.retouch;
-      markSaving();
       try {
         const next = await api.updateLayerParams({
           projectId: doc.id,
@@ -1714,7 +1744,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const freezeGrid = [...(retouch?.freezeGrid ?? [])];
       while (freezeGrid.length < FREEZE_GRID_CELLS) freezeGrid.push(false);
       freezeGrid[index] = !freezeGrid[index];
-      markSaving();
       try {
         const next = await api.updateLayerParams({
           projectId: doc.id,
@@ -2044,7 +2073,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       };
       const previousIds = new Set(doc.layers.map((layer) => layer.id));
       set({ faceLayerBusy: true });
-      markSaving();
       try {
         const next = await api.addLayer({
           projectId: doc.id,
@@ -2095,7 +2123,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       };
       const previousIds = new Set(doc.layers.map((layer) => layer.id));
       set({ faceLayerBusy: true });
-      markSaving();
       try {
         const next = await api.addLayer({
           projectId: doc.id,
@@ -2273,7 +2300,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
             (layer) => !previousIds.has(layer.id) && layer.kind === "aiResult",
           ) ?? null;
         if (created) set({ selectedLayerId: created.id });
-        markSaving();
         schedulePreview(30);
         toastSuccess(
           "本地模型已完成降噪，结果作为新图层加入；关闭图层即可对比原始细节。",
@@ -2317,7 +2343,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
             (layer) => !previousIds.has(layer.id) && layer.kind === "aiResult",
           ) ?? null;
         if (created) set({ selectedLayerId: created.id });
-        markSaving();
         schedulePreview(30);
         toastSuccess(
           "Photo-HQ 已完成 4x 人像降噪，结果作为新图层加入；关闭图层即可对比原始细节。",
@@ -2516,7 +2541,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
           });
         }
         await finishEdit("开启 AI 降噪");
-        markSaving();
         schedulePreview(30);
         set({ selectedLayerId: created.id });
       } catch (error) {
@@ -2573,7 +2597,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         autoSkin: previous?.autoSkin ?? false,
       };
       patchLocalLayer(layerId, (item) => ({ ...item, mask }));
-      markSaving();
       await flushSync();
       try {
         const next = await api.setLayerMask({
@@ -2603,7 +2626,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
           ? { strokes, autoSkin: enabled }
           : null;
       patchLocalLayer(layerId, (item) => ({ ...item, mask: nextMask }));
-      markSaving();
       await flushSync();
       try {
         const next = await api.setLayerMask({ projectId: doc.id, layerId, mask: nextMask });
@@ -2656,7 +2678,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       if (!api || !doc || !layer?.mask) return;
       const previous = layer.mask;
       patchLocalLayer(layerId, (item) => ({ ...item, mask: null }));
-      markSaving();
       await flushSync();
       try {
         const next = await api.setLayerMask({ projectId: doc.id, layerId, mask: null });
@@ -2868,7 +2889,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       await flushSync();
       const doc = get().doc;
       if (!api || !doc || !doc.canUndo) return;
-      markSaving();
       try {
         const next = await api.undo({ projectId: doc.id });
         applyDocument(next);
@@ -2883,7 +2903,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       await flushSync();
       const doc = get().doc;
       if (!api || !doc || !doc.canRedo) return;
-      markSaving();
       try {
         const next = await api.redo({ projectId: doc.id });
         applyDocument(next);
@@ -2899,7 +2918,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       if (!api || !doc) return null;
       await flushSync();
       const previousIds = new Set(doc.layers.map((layer) => layer.id));
-      markSaving();
       try {
         const next = await api.addLayer({ projectId: doc.id, kind, ...options });
         applyDocument(next);
@@ -2939,7 +2957,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const layer = doc.layers.find((item) => item.id === layerId);
       if (!layer || layer.kind === "base") return;
       await flushSync();
-      markSaving();
       const existing = new Set(doc.layers.map((item) => item.id));
       try {
         const next = await api.duplicateLayer({ projectId: doc.id, layerId });
@@ -2959,7 +2976,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const layer = doc.layers.find((item) => item.id === layerId);
       if (!layer || layer.kind === "base" || layer.locked) return;
       await flushSync();
-      markSaving();
       try {
         const next = await api.deleteLayer({ projectId: doc.id, layerId });
         applyDocument(next);
@@ -2974,7 +2990,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const doc = get().doc;
       if (!api || !doc) return;
       await flushSync();
-      markSaving();
       try {
         const next = await api.moveLayer({ projectId: doc.id, layerId, direction });
         applyDocument(next);
@@ -2991,7 +3006,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const layer = doc.layers.find((item) => item.id === layerId);
       if (!layer) return;
       patchLocalLayer(layerId, (item) => ({ ...item, visible }));
-      markSaving();
       schedulePreview(60);
       try {
         const next = await api.updateLayer({ projectId: doc.id, layerId, patch: { visible } });
@@ -3010,7 +3024,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const layer = doc.layers.find((item) => item.id === layerId);
       if (!layer) return;
       patchLocalLayer(layerId, (item) => ({ ...item, blendMode }));
-      markSaving();
       schedulePreview(60);
       try {
         const next = await api.updateLayer({ projectId: doc.id, layerId, patch: { blendMode } });
@@ -3025,14 +3038,12 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     setLayerOpacity: (layerId, opacity) => {
       patchLocalLayer(layerId, (item) => ({ ...item, opacity }));
       queueLayerPatch(layerId, { opacity });
-      markSaving();
       schedulePreview(120);
     },
 
     editPortrait: (layerId, params) => {
       patchLocalLayer(layerId, (item) => ({ ...item, portrait: { ...params } }));
       queueParams(layerId, { portrait: { ...params } });
-      markSaving();
       noteInteractiveEdit();
       schedulePreview(130);
     },
@@ -3086,7 +3097,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     editColor: (layerId, params) => {
       patchLocalLayer(layerId, (item) => ({ ...item, color: { ...params } }));
       queueParams(layerId, { color: { ...params } });
-      markSaving();
       noteInteractiveEdit();
       schedulePreview(130);
     },
@@ -3295,7 +3305,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       if (!api || !doc) return;
       await flushSync();
       const previousIds = new Set(doc.layers.map((layer) => layer.id));
-      markSaving();
       try {
         const next = await api.applyAiResult({ projectId: doc.id, jobId });
         if (!isCurrentProject(doc.id)) return;
@@ -3331,7 +3340,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       // Export renders the backend session, so pending slider deltas must reach
       // it before the file is produced.
       await flushSync();
-      markSaving();
       const jobId =
         globalThis.crypto?.randomUUID?.() ??
         `export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
