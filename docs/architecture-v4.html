@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>AI 人像修图软件｜完整架构与实施路线图</title>
+<style>
+:root{
+  --bg:#0d1016;--surface:#151a23;--surface2:#1c2330;--surface3:#242d3b;
+  --border:#303a4b;--text:#e7ebf3;--muted:#a4afbf;--subtle:#7d899b;
+  --blue:#83b5ff;--blue2:#315f9e;--green:#72d6a0;--amber:#f5c66b;
+  --red:#ff8793;--purple:#c2a2ff;--cyan:#7ddde7;
+  --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:22px}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.75 var(--sans)}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1240px;margin:auto;padding:34px 28px 80px}
+.hero{padding:34px;border:1px solid var(--border);border-radius:20px;background:linear-gradient(140deg,#192436 0%,#151a23 58%,#1b1a29 100%)}
+.kicker{font:12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--blue)}
+h1{font-size:clamp(28px,4vw,44px);line-height:1.2;letter-spacing:-.035em;margin:14px 0}
+h2{font-size:25px;line-height:1.3;margin:0 0 18px}
+h3{font-size:17px;margin:0 0 10px}
+h4{font-size:14px;margin:0 0 8px;color:var(--blue)}
+p{margin:7px 0 12px}
+.lead{font-size:16px;color:#c1cbd9;max-width:900px}
+.tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+.tag{font:12px var(--mono);padding:5px 10px;border:1px solid #3a4b65;border-radius:7px;color:#c4d8f8;background:#172338}
+.tag.green{border-color:#315d4b;color:var(--green);background:#14261f}
+.tag.amber{border-color:#67542e;color:var(--amber);background:#282216}
+nav{position:sticky;top:0;z-index:5;background:rgba(13,16,22,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);margin:22px 0 34px;padding:10px 0}
+nav .navinner{max-width:1240px;margin:auto;padding:0 28px;display:flex;gap:8px;overflow:auto;white-space:nowrap}
+nav a{font-size:12px;color:var(--muted);border:1px solid var(--border);padding:5px 9px;border-radius:7px}
+nav a:hover{color:var(--text);border-color:var(--blue);text-decoration:none}
+section{margin:42px 0;scroll-margin-top:75px}
+.section-intro{color:var(--muted);max-width:920px;margin-top:-8px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.card{border:1px solid var(--border);background:var(--surface);border-radius:13px;padding:20px;min-width:0}
+.card p,.card li{color:var(--muted)}
+.card ul,.card ol{padding-left:20px;margin:8px 0}
+.card li{margin:5px 0}
+.card strong{color:var(--text)}
+.callout{padding:14px 17px;border-left:3px solid var(--blue);background:#142033;border-radius:0 9px 9px 0;color:#c9d7e9;margin:16px 0}
+.callout.warn{border-color:var(--amber);background:#272115;color:#e5d8b8}
+.callout.danger{border-color:var(--red);background:#2b191f;color:#edc5cb}
+.callout.good{border-color:var(--green);background:#14261f;color:#c5e6d4}
+.pill{display:inline-block;font:11px var(--mono);padding:2px 7px;border-radius:5px;background:var(--surface3);color:var(--muted);margin:2px}
+.pill.p0{background:#39231f;color:#ffb39b}.pill.p1{background:#302817;color:var(--amber)}.pill.p2{background:#1b2a3d;color:var(--blue)}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:12px 0 18px}
+th,td{border:1px solid var(--border);padding:10px 12px;text-align:left;vertical-align:top}
+th{background:var(--surface2);color:#dce5f2;font-weight:600}
+td{color:var(--muted)}
+td strong{color:var(--text)}
+code,pre{font-family:var(--mono)}
+code{font-size:.9em;color:#b9d6ff;background:#202b3b;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{white-space:pre;overflow:auto;background:#0a0d12;border:1px solid var(--border);border-radius:10px;padding:16px;font-size:12px;line-height:1.65;color:#cbd7e8}
+.arch{display:grid;gap:8px}
+.arch-layer{border:1px solid var(--border);border-radius:10px;padding:13px 15px;background:var(--surface);display:grid;grid-template-columns:175px 1fr;gap:14px}
+.arch-title{font:12px var(--mono);color:var(--blue);align-self:center}
+.arch-content{display:flex;flex-wrap:wrap;gap:7px}
+.arch-chip{border:1px solid #3a4658;background:var(--surface2);border-radius:6px;padding:4px 8px;font-size:12px;color:#c5ceda}
+.arch-chip.ai{border-color:#5a4b2c;color:var(--amber)}
+.arch-chip.gpu{border-color:#285441;color:var(--green)}
+.down{text-align:center;color:var(--subtle);line-height:1.2;font-size:20px}
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.flow .step{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:13px}
+.step b{display:block;color:var(--blue);font-size:13px;margin-bottom:5px}
+.step span{font-size:12px;color:var(--muted)}
+.metric{border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:15px}
+.metric b{display:block;font-size:14px}
+.metric span{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+.timeline{display:grid;gap:12px}
+.phase{display:grid;grid-template-columns:130px 1fr;gap:18px}
+.phase-label{border:1px solid var(--border);background:var(--surface2);border-radius:10px;padding:14px;height:max-content}
+.phase-label b{display:block;color:var(--blue);font:12px var(--mono)}
+.phase-label span{font-size:12px;color:var(--muted)}
+.phase-body{border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:18px}
+.phase-body h3{margin-bottom:7px}
+.checklist{list-style:none;padding:0!important}
+.checklist li{padding-left:24px;position:relative}
+.checklist li:before{content:"□";position:absolute;left:0;color:var(--green)}
+.small{font-size:12px;color:var(--subtle)}
+footer{border-top:1px solid var(--border);padding-top:20px;color:var(--subtle);font-size:12px;margin-top:60px}
+@media(max-width:800px){.wrap{padding:20px 14px 55px}.hero{padding:23px}.grid,.grid.three{grid-template-columns:1fr}.arch-layer{grid-template-columns:1fr;gap:7px}.flow{grid-template-columns:repeat(2,minmax(0,1fr))}.phase{grid-template-columns:1fr;gap:8px}.phase-label{display:flex;gap:12px;align-items:center}nav .navinner{padding:0 14px}}
+@media print{body{background:white;color:#171717}.hero,.card,.phase-body,.phase-label,.arch-layer,.metric{background:white;color:#171717;border-color:#aaa}p,li,td,.section-intro,.lead{color:#333}nav{display:none}.wrap{max-width:none;padding:0}.callout{background:#f4f4f4;color:#222}pre{white-space:pre-wrap;background:#f5f5f5;color:#222}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="kicker">Architecture Specification · Tauri 2 · Windows First</div>
+  <h1>AI 人像修图软件<br>完整架构与分阶段实施方案</h1>
+  <p class="lead">目标产品：结合快速人像精修（检测、分割、磨皮、修复、液化与局部增强）、专业照片调色、RAW 开发、基于图片的自动调整，以及可由用户配置的云端大模型图片编辑能力。本文保留原方案中的 Rust、WGPU、非破坏式编辑、SQLite 和多 Provider 思路，并将未验证的依赖与性能假设改为明确的验证任务。</p>
+  <div class="tags">
+    <span class="tag">Tauri 2</span><span class="tag">React 19 + TypeScript</span><span class="tag">Vite</span>
+    <span class="tag">Rust</span><span class="tag">WGPU / WGSL</span><span class="tag">RAW / ICC</span>
+    <span class="tag">Cloud AI Provider</span><span class="tag">SQLite</span>
+    <span class="tag green">Non-destructive Editing</span><span class="tag amber">Windows-first</span>
+  </div>
+</header>
+
+<nav><div class="navinner">
+<a href="#summary">摘要</a><a href="#decisions">架构决策</a><a href="#architecture">分层架构</a><a href="#image-pipeline">图像管线</a>
+<a href="#document">文档模型</a><a href="#portrait">人像引擎</a><a href="#color">色彩与 RAW</a><a href="#ai">AI Provider</a>
+<a href="#scheduler">任务调度</a><a href="#security">安全</a><a href="#storage">持久化</a><a href="#testing">测试指标</a><a href="#roadmap">实施计划</a><a href="#risks">风险与验证</a>
+</div></nav>
+
+<section id="summary">
+<h2>01. 执行摘要</h2>
+<p class="section-intro">这是一份用于技术设计与实施的基线文档，不是声称所有第三方依赖均已验证的最终选型。任何库、模型和 GPU 路径在进入主干前都必须通过 Spike / PoC。</p>
+<div class="grid three">
+  <div class="metric"><b>产品目标</b><span>快速人像、专业调色、RAW、自动修图、云端 AI 编辑</span></div>
+  <div class="metric"><b>核心原则</b><span>原图不覆盖、编辑可回放、AI 结果可审查、后端可替换</span></div>
+  <div class="metric"><b>首发平台</b><span>Windows 10/11 x64 优先；其他平台不作为首期验收门槛</span></div>
+  <div class="metric"><b>交互优先级</b><span>预览响应优先于后台分析和导出</span></div>
+  <div class="metric"><b>AI 策略</b><span>云端图像编辑优先；本地视觉模型可选；不绑定单一厂商</span></div>
+  <div class="metric"><b>RAW 策略</b><span>首期纳入范围，但需按相机样片建立兼容矩阵</span></div>
+</div>
+<div class="callout good"><strong>架构主张：</strong>前端只负责交互与呈现；Rust 负责领域逻辑、资源与任务调度；图像处理后端可由 CPU、WGPU 或专用推理进程执行。不要把所有计算都强制塞进 GPU，也不要让云端模型成为本地确定性修图管线的唯一入口。</div>
+</section>
+
+<section id="decisions">
+<h2>02. 架构决策与边界</h2>
+<table>
+<thead><tr><th>领域</th><th>基线决策</th><th>说明 / 待验证项</th></tr></thead>
+<tbody>
+<tr><td><strong>桌面容器</strong></td><td>Tauri 2</td><td>使用最小化 capability 权限；文件访问通过显式命令与授权范围控制。</td></tr>
+<tr><td><strong>前端</strong></td><td>React + TypeScript + Vite</td><td>状态分为 UI 状态、文档状态、任务状态；不要将完整像素缓冲存入 React store。</td></tr>
+<tr><td><strong>Rust 工作区</strong></td><td>按领域 crate / module 拆分</td><td>建议 core、document、render、raw、portrait、ai、persistence、app commands。初期可以 workspace 内模块化，避免过早拆成大量独立 crate。</td></tr>
+<tr><td><strong>图像计算</strong></td><td>CPU 参考路径 + 可选 WGPU 加速</td><td>先实现正确性与可测基线，再将高收益算子迁移到 GPU；GPU 不可用时必须有可控降级策略。</td></tr>
+<tr><td><strong>RAW</strong></td><td>独立 RAW 开发子系统</td><td>候选解码器须验证相机覆盖、色彩行为、许可证、维护状态和 Windows 构建；不得假设一个 Rust crate 覆盖所有 RAW。</td></tr>
+<tr><td><strong>AI</strong></td><td>统一 Provider 契约，云端优先</td><td>供应商 API、兼容 OpenAI 风格的端点、图像编辑服务和 ComfyUI 都可能有不同能力；以 capability 描述实际功能。</td></tr>
+<tr><td><strong>持久化</strong></td><td>SQLite + 项目文档 + 资源缓存</td><td>数据库存元数据和索引；大图、遮罩、AI 结果等二进制资源单独存储并以稳定 ID 引用。</td></tr>
+<tr><td><strong>色彩</strong></td><td>明确输入配置、工作空间与输出变换</td><td>需要选定并测试具体色彩管理实现；不得只靠“支持 sRGB / P3”标签就宣称完整 ICC 工作流。</td></tr>
+</tbody>
+</table>
+<div class="callout warn"><strong>不在首期承诺：</strong>所有 RAW 相机型号均完美支持、跨设备像素级一致、所有 AI 模型都可取消、所有 GPU 输出逐像素相同、任意第三方模型工作流开箱即用。上述目标需要分别定义范围与验收方式。</div>
+</section>
+
+<section id="architecture">
+<h2>03. 目标分层架构</h2>
+<div class="arch">
+  <div class="arch-layer"><div class="arch-title">01 · UI / 交互层</div><div class="arch-content"><span class="arch-chip">React + TypeScript</span><span class="arch-chip">Canvas / WebGL 或呈现层</span><span class="arch-chip">工具面板 / 图层面板</span><span class="arch-chip">AI 对话与结果比较</span><span class="arch-chip">Zustand 或等价状态库（待定）</span></div></div>
+  <div class="down">↓ typed command / event</div>
+  <div class="arch-layer"><div class="arch-title">02 · 应用服务层</div><div class="arch-content"><span class="arch-chip">Command Facade</span><span class="arch-chip">Document Service</span><span class="arch-chip">Task Scheduler</span><span class="arch-chip">Undo / Redo</span><span class="arch-chip">Progress / Cancellation</span><span class="arch-chip">Settings / Project Service</span></div></div>
+  <div class="down">↓ domain contracts</div>
+  <div class="arch-layer"><div class="arch-title">03 · 图像领域层</div><div class="arch-content"><span class="arch-chip">Edit Graph</span><span class="arch-chip">Layer / Mask</span><span class="arch-chip">Color Pipeline</span><span class="arch-chip">RAW Develop</span><span class="arch-chip">Export Pipeline</span><span class="arch-chip">Metadata / ICC</span></div></div>
+  <div class="down">↓ pluggable execution backends</div>
+  <div class="grid three">
+    <div class="card"><h3>CPU / 图像算法</h3><p>参考实现、解码后处理、低并发任务、GPU fallback。采用基准测试选择算法库。</p></div>
+    <div class="card"><h3>WGPU / WGSL</h3><p>适合并行的滤波、混合、颜色变换和预览算子。验证适配器、显存预算、精度与驱动兼容性。</p></div>
+    <div class="card"><h3>AI 执行后端</h3><p>云端 API 优先；可选本地 ONNX Runtime、独立模型进程、ComfyUI 工作流。</p></div>
+  </div>
+  <div class="down">↓</div>
+  <div class="arch-layer"><div class="arch-title">04 · 基础设施层</div><div class="arch-content"><span class="arch-chip">SQLite</span><span class="arch-chip">Asset Store</span><span class="arch-chip">LRU Cache</span><span class="arch-chip">Credential Store</span><span class="arch-chip">Structured Logs</span><span class="arch-chip">Updater / Signing</span></div></div>
+</div>
+<h3 style="margin-top:22px">建议目录结构</h3>
+<pre>photo-editor/
+├─ apps/
+│  └─ desktop/                 # React + Vite 前端
+│     ├─ src/features/
+│     │  ├─ workspace/         # 工作台、画布、工具栏
+│     │  ├─ layers/            # 图层与蒙版 UI
+│     │  ├─ portrait/          # 人像工具
+│     │  ├─ color/             # 调色面板
+│     │  ├─ ai/                # Provider 配置、任务与结果
+│     │  └─ export/            # 导出设置
+│     └─ src-tauri/
+│        ├─ capabilities/      # 最小权限配置
+│        └─ src/commands/      # Tauri IPC 薄适配层
+├─ crates/
+│  ├─ app-core/                # 应用服务与领域错误
+│  ├─ document/                # 文档、图层、操作图、历史
+│  ├─ image-core/              # 像素格式、几何、混合、基础算子
+│  ├─ color-pipeline/          # 色彩转换、曲线、LUT
+│  ├─ raw-develop/              # RAW 解码适配器与开发流程
+│  ├─ portrait-engine/         # 人脸、蒙版、美肤、液化
+│  ├─ render-engine/           # CPU / WGPU 执行后端
+│  ├─ ai-provider/             # Provider trait、任务协议、结果验证
+│  ├─ persistence/             # SQLite、项目迁移、资源索引
+│  └─ task-runtime/             # 队列、取消、优先级、预算
+├─ tests/
+│  ├─ fixtures/                # 有授权的测试图与 RAW 样片
+│  ├─ golden/                  # 基准输出与色彩测试
+│  └─ provider-contract/        # mock / sandbox 契约测试
+└─ docs/
+   ├─ ADR/                      # 架构决策记录
+   ├─ providers/                # Provider 接入说明
+   └─ compatibility/            # RAW / GPU / OS 兼容矩阵</pre>
+<p class="small">目录仅为建议基线；开发初期可先用单个 Rust workspace 和清晰 module 边界，避免为了目录整齐增加不必要的抽象。</p>
+</section>
+
+<section id="image-pipeline">
+<h2>04. 图像处理管线与执行图</h2>
+<p class="section-intro">将“固定顺序的整条流水线”调整为“固定的输入 / 工作 / 输出边界 + 可组合编辑节点”。节点之间需要显式声明依赖、颜色格式、分辨率、蒙版与执行后端。</p>
+<div class="flow">
+  <div class="step"><b>① 导入与解码</b><span>文件探测、EXIF 方向、RAW 开发、输入 ICC、缩略图</span></div>
+  <div class="step"><b>② 规范化</b><span>统一像素格式、工作色彩空间、几何与尺寸元数据</span></div>
+  <div class="step"><b>③ 编辑图执行</b><span>图层、调整节点、人像节点、蒙版、混合模式</span></div>
+  <div class="step"><b>④ 输出变换</b><span>目标 ICC、位深、量化、锐化、格式编码与元数据策略</span></div>
+</div>
+<h3 style="margin-top:20px">节点契约</h3>
+<table><thead><tr><th>字段</th><th>用途</th></tr></thead><tbody>
+<tr><td><code>nodeId / type / schemaVersion</code></td><td>稳定身份、算子类型、参数结构版本。</td></tr>
+<tr><td><code>inputs / dependencies</code></td><td>上游节点与资源依赖，保证合法拓扑顺序。</td></tr>
+<tr><td><code>params</code></td><td>经领域类型校验的参数；不允许未校验的任意 JSON 直接进入渲染器。</td></tr>
+<tr><td><code>maskRef / opacity / blendMode</code></td><td>局部影响范围与合成规则。</td></tr>
+<tr><td><code>inputSpec / outputSpec</code></td><td>像素格式、尺寸、色彩空间、动态范围等执行约束。</td></tr>
+<tr><td><code>cacheKey / version</code></td><td>根据上游内容、参数、算法版本与色彩设置计算缓存身份。</td></tr>
+</tbody></table>
+<div class="callout"><strong>预览与导出分离：</strong>预览使用缩放代理图与可复用中间结果；导出使用原始分辨率和高质量参数。预览缩放不是最终图像数据。节点缓存必须区分预览尺寸、完整尺寸、色彩配置和算法版本。</div>
+<h3>WGPU 实施原则</h3>
+<ul>
+<li>先建立 CPU 参考实现与图像基准测试，再迁移高收益算子；不要一开始就实现完整 GPU 图像框架。</li>
+<li>采用纹理池 / 缓冲池和预算驱动淘汰；GPU 资源丢失时可重建，不把 GPU 资源作为唯一持久状态。</li>
+<li>合并短小的颜色算子可减少 pass 开销，但要用实测验证；保留调试模式以便定位数值差异。</li>
+<li>对于高斯模糊、双边滤波等算法，分别测量分辨率、半径、精度、GPU 型号和驱动下的延迟。</li>
+<li>CPU 与 GPU 采用容差、误差分布和视觉回归测试，不把跨后端逐像素相等作为普遍要求。</li>
+</ul>
+</section>
+
+<section id="document">
+<h2>05. 项目文档、图层、蒙版与非破坏式编辑</h2>
+<div class="grid">
+  <div class="card"><h3>图层类型</h3><ul>
+    <li>原始图像 / RAW 开发图层</li><li>调色调整图层</li><li>人像处理图层</li><li>AI 编辑结果图层</li><li>局部修复 / 克隆图层</li><li>可选文字、水印或图形图层（可后续加入）</li>
+  </ul></div>
+  <div class="card"><h3>蒙版类型</h3><ul>
+    <li>手动笔刷、橡皮擦、线性 / 径向渐变</li><li>人脸、皮肤、头发、眼睛、嘴唇、背景等语义蒙版</li><li>蒙版反转、羽化、密度、边缘细化</li><li>AI 蒙版作为可编辑资源保存，而不是仅保存模型请求</li>
+  </ul></div>
+</div>
+<h3 style="margin-top:20px">建议的领域类型（概念示例）</h3>
+<pre>ProjectDocument
+  id, schemaVersion, createdAt, updatedAt
+  sourceAssets[]
+  canvas: width, height, orientation, workingColorSpace
+  layers[]: id, name, kind, visible, opacity, blendMode, maskRef
+  editGraph: nodes[], edges[]
+  history: command metadata / checkpoints
+  externalAssets[]: AI result, mask, proxy, LUT reference
+  exportProfiles[]: output settings
+
+Layer
+  id, kind, name, visible, locked
+  opacity: 0..1
+  blendMode: enum
+  contentRef: AssetId
+  maskRef?: MaskId
+  nodeRefs: NodeId[]
+
+Mask
+  id, kind, dimensions, coordinateSpace
+  source: manual | segmentation | imported
+  assetRef or vector strokes
+  feather, density, inversion, revision
+
+EditNode
+  id, type, schemaVersion, enabled
+  typedParams, inputRefs, maskRef
+  implementationVersion, cacheKey</pre>
+<p>上面是概念 schema，不是可直接编译的 TS / Rust 定义。正式实现应由 Rust 领域类型定义校验规则，再通过明确的 IPC DTO 暴露给前端；前后端共享可生成的 schema 或契约测试，避免手工维护两套不一致类型。</p>
+<h3>历史与恢复策略</h3>
+<ul>
+<li>每个用户动作生成语义命令；滑块连续拖动合并为一条历史记录，避免每帧产生撤销项。</li>
+<li>大体积图像资源不重复塞进每条历史；历史记录引用资产 ID，并在需要时生成检查点。</li>
+<li>自动保存采用防抖写入 + 关键节点落盘；数据库事务和资源写入要设计一致性策略。</li>
+<li>启动时检测上次异常退出状态，提供恢复 / 放弃恢复；资源写入采用临时文件 + 原子替换等可靠策略。</li>
+<li>项目打开时校验 schemaVersion、资源缺失、算子版本与外部模型依赖，并提供迁移或降级提示。</li>
+</ul>
+</section>
+
+<section id="portrait">
+<h2>06. 人像精修引擎</h2>
+<p class="section-intro">人像精修不是单个滤镜。需要把检测、关键点、分割、局部处理和合成拆成可测试模块；具体模型与算法需经过质量、许可和性能评估后选定。</p>
+<table><thead><tr><th>模块</th><th>处理职责</th><th>关键验收</th></tr></thead><tbody>
+<tr><td><strong>Face Detector</strong></td><td>多人脸检测、边界框、置信度、尺度处理</td><td>不同角度、遮挡、多人场景的漏检与误检可量化</td></tr>
+<tr><td><strong>Landmarks</strong></td><td>眼睛、鼻子、嘴唇、下颌等关键点</td><td>点位稳定；提供置信度与失败回退</td></tr>
+<tr><td><strong>Segmentation</strong></td><td>皮肤、头发、背景、眼睛、嘴唇等蒙版</td><td>边缘质量、发丝处理、误分区域和人工修正流程</td></tr>
+<tr><td><strong>Skin Retouch</strong></td><td>纹理保护、肤色均匀、瑕疵弱化、局部提亮</td><td>皮肤纹理保留；避免眼睛、眉毛、头发被磨平</td></tr>
+<tr><td><strong>Liquify</strong></td><td>网格 / 位移场、笔刷半径、强度、局部约束</td><td>控制点可撤销；边缘不撕裂；坐标变换正确</td></tr>
+<tr><td><strong>Local Repair</strong></td><td>修复笔刷、克隆、局部融合</td><td>边缘接缝、重复纹理、透明度和蒙版约束测试</td></tr>
+</tbody></table>
+<h3>建议的第一条可交付链路</h3>
+<div class="flow">
+  <div class="step"><b>1. 检测</b><span>人脸框、关键点与置信度；允许人工选择目标人脸</span></div>
+  <div class="step"><b>2. 分割</b><span>生成皮肤 / 五官 / 头发蒙版，并允许笔刷修正</span></div>
+  <div class="step"><b>3. 处理</b><span>瑕疵弱化、肤色均匀、纹理保护与局部调色</span></div>
+  <div class="step"><b>4. 合成</b><span>蒙版混合、实时预览、撤销重做与导出回归</span></div>
+</div>
+
+<h3>产品交互原则：简单、直观、懒人化（必须遵守）</h3>
+<div class="callout"><strong>面向普通用户：</strong>用户不需要懂“蒙版、分割、羽化、色彩空间、关键点”等专业术语，也不应该为了修一张照片先学习教程。默认界面用日常语言、少量选项和安全的自动效果；专业参数放到“更多调整”里，不阻塞普通用户完成修图。</div>
+<ul>
+<li><strong>先一键，再微调：</strong>提供“自然美颜”“清透提亮”“轻度精修”等一键方案。点击后立即预览，用户只需调整“效果轻一点 / 重一点”；不要求先选择模型、算法或复杂参数。</li>
+<li><strong>默认效果保守：</strong>自动美颜默认使用自然、轻度效果，优先保留皮肤纹理和个人特征；不默认移除痣、胎记、雀斑、纹身，不默认大幅改变脸型或身体比例。</li>
+<li><strong>把专业词换成人话：</strong>“语义分割”显示为“选择要修的部位”；“蒙版”显示为“修饰范围”；“羽化”显示为“边缘自然过渡”；“强度”显示为“效果程度”；“克隆”显示为“复制附近皮肤修补”。技术文档和内部接口可以保留准确术语，用户界面不要直接暴露。</li>
+<li><strong>按目标组织，而不是按算法组织：</strong>首页分成“脸部美颜”“身体修饰”“皮肤颜色”“细节修复”几个容易理解的入口，不要让用户面对检测、分割、色彩管理等研发模块。</li>
+<li><strong>自动找到，用户确认：</strong>优先自动识别人脸、皮肤和可修饰区域，并用清晰的区域提示让用户确认；识别不确定时显示“没找到合适区域，点一下想调整的位置”，不要静默地修错地方。</li>
+<li><strong>重要功能一眼能开关：</strong>法令纹、黑眼圈、美白、痘印、痣、胎记、雀斑、纹身等使用独立开关；开关旁配一句简短说明。痣、胎记、雀斑、纹身默认关闭，开启后只处理用户确认的范围。</li>
+<li><strong>用易懂的程度选项：</strong>默认展示“轻一点 / 适中 / 明显”或“自然 / 明显”预设；需要精细控制的用户再展开滑杆。避免一次展示大量数字、半径、硬度、色相、算法选项。</li>
+<li><strong>随时知道改了什么：</strong>提供醒目的“按住看原图”“前后对比”“撤销”“恢复原图”；当前启用的效果清楚列出。关闭某项必须真正取消该项处理，不能只是把开关外观变灰。</li>
+<li><strong>避免操作焦虑：</strong>编辑自动保存；所有效果可撤销；切换工具不丢失已完成修改；删除 / 覆盖原图前必须确认。遇到模型失败时给出普通用户能理解的提示和重试选项，不显示堆栈或内部错误代码。</li>
+<li><strong>新手默认模式 + 可选高级模式：</strong>默认只显示常用功能和安全预设；“更多调整”里才提供笔刷、修饰范围、边缘过渡、细节保护等进阶设置。高级设置不应改变原图安全规则，也不能隐藏恢复功能。</li>
+</ul>
+<h4>建议的普通用户操作流程</h4>
+<div class="flow">
+  <div class="step"><b>1. 打开照片</b><span>自动识别照片中的人脸和皮肤区域，不要求用户先设置参数。</span></div>
+  <div class="step"><b>2. 点一个效果</b><span>例如“自然美颜”“皮肤提亮”或“修复痘印”，立刻看到预览。</span></div>
+  <div class="step"><b>3. 调整程度</b><span>点“轻一点 / 明显一点”，或关闭不需要的单项效果。</span></div>
+  <div class="step"><b>4. 对比并保存</b><span>按住查看原图，满意后点“导出照片”；原图始终保留。</span></div>
+</div>
+<h4>用户界面文案示例</h4>
+<table><thead><tr><th>避免直接展示的术语</th><th>建议用户看到的文字</th></tr></thead><tbody>
+<tr><td>语义分割 / 蒙版</td><td>选择修饰部位 / 修饰范围</td></tr>
+<tr><td>羽化 / 边缘融合</td><td>边缘自然过渡</td></tr>
+<tr><td>频率分离 / 纹理保护</td><td>保留皮肤细节（默认自动）</td></tr>
+<tr><td>修复 / 克隆采样</td><td>修复瑕疵 / 复制附近皮肤</td></tr>
+<tr><td>局部色相、饱和度与亮度</td><td>肤色、明亮程度</td></tr>
+<tr><td>低置信度检测</td><td>没能确定位置，请点一下要调整的地方</td></tr>
+<tr><td>模型推理失败</td><td>这次没修成功，原图没有改变。请重试或换一种修法。</td></tr>
+</tbody></table>
+
+<h3>人像算法需求规格（首期必须落地）</h3>
+<p>本节是算法研发、前后端联调和验收的共同需求。算法模型可以替换，但输入输出、用户控制、失败行为和质量测试不能省略。面向普通用户的操作必须遵循前述“简单、直观、懒人化”原则；专业参数默认收起。所有算法输出必须进入可撤销的编辑图层或节点，不得直接覆盖原图。</p>
+<table><thead><tr><th>优先级 / 能力</th><th>功能需求</th><th>输出与交互要求</th><th>验收重点</th></tr></thead><tbody>
+<tr><td><strong>P0 人脸检测</strong></td><td>支持单人、多人、正侧脸、不同尺寸脸部；返回每张脸的边界框、置信度、稳定 ID。</td><td>画布可选中目标脸；支持重新检测、忽略某张脸；检测结果与原图坐标系绑定。</td><td>按脸部尺寸、姿态、遮挡分层统计漏检 / 误检；低置信度不自动套用五官处理。</td></tr>
+<tr><td><strong>P0 人脸关键点</strong></td><td>至少覆盖眼角 / 眼睑、眉毛、鼻翼 / 鼻尖、唇线、下颌轮廓；可扩展密集关键点。</td><td>每个点带置信度；随缩放、旋转、裁剪和 EXIF 方向保持坐标一致。</td><td>对不同姿态与遮挡进行关键点误差回归；失败时可手动修正或禁用依赖该结果的工具。</td></tr>
+<tr><td><strong>P0 语义分割</strong></td><td>生成皮肤、头发、眉毛、眼睛、嘴唇、牙齿、背景等类别蒙版；首期至少保证皮肤 / 五官 / 头发。</td><td>蒙版可查看、反相、羽化、扩张 / 收缩；提供加 / 减笔刷、边缘修正和重置。</td><td>重点检查发际线、眼镜、胡须、耳朵、手遮脸、复杂背景；蒙版边缘不得出现明显光晕。</td></tr>
+<tr><td><strong>P0 自然磨皮</strong></td><td>提供强度、半径 / 细节保护控制；弱化临时瑕疵与肤色不均，同时保留毛孔、细纹和自然质感。</td><td>皮肤蒙版约束处理；眼睛、眉毛、鼻孔、嘴唇、头发默认排除；支持局部擦除效果。</td><td>100% / 200% 查看不出现塑料皮、蜡像感、边缘涂抹和明显频率分离接缝；强度为 0 时结果应与输入一致。</td></tr>
+<tr><td><strong>P0 法令纹 / 细纹弱化</strong></td><td>针对法令纹、嘴角纹、额头纹、眉间纹、鱼尾纹、眼下细纹等提供分区、可调强度的弱化；区分纹理型细纹与阴影 / 凹陷形成的结构性纹路，不能一律模糊抹平。</td><td>支持自动定位后手动增 / 减选区；每个区域独立强度、羽化、保护范围和前后对比；可只弱化阴影与局部对比，保留面部体积、笑容和自然皮肤纹理；效果单独成节点并可撤销。</td><td>不同年龄、肤色、表情、侧光和正侧脸样片均需评审；不得出现鼻翼边缘融化、嘴角变形、面中平板化、肤色块、重复纹理或明显模糊带；强度为 0 时与输入一致。</td></tr>
+<tr><td><strong>P0 黑眼圈 / 眼袋修饰</strong></td><td>提供黑眼圈色差弱化、眼下局部提亮及轻度阴影减弱；眼袋结构调整与单纯色差修正应分开控制，首期不做不可控的自动重塑。</td><td>眼下区域独立蒙版和强度；保护下眼睑边界、睫毛、眼角与眼球；提供自然 / 保守默认值与局部恢复笔刷。</td><td>不把眼下区域漂白成纯色，不抹掉下眼睑轮廓，不产生眼睛大小或形状变化；检查强侧光、熬夜型色差及不同肤色。</td></tr>
+<tr><td><strong>P1 局部美颜组合</strong></td><td>在法令纹、额头纹、眉间纹、鱼尾纹、嘴角纹、颈纹等区域提供独立开关和预设组合；支持轻度瑕疵淡化、肤色均匀和局部提亮组合。</td><td>组合仅作为可编辑参数预设，不合并成不可逆滤镜；显示每项实际启用的子效果，支持单项调节、重置、复制参数和局部擦除。</td><td>验证多效果叠加时不出现过度平滑、边缘断层、脸型漂移或肤色失真；所有预设均可回到原图并可单独关闭。</td></tr>
+<tr><td><strong>P0 肤色均匀 / 局部调色</strong></td><td>支持肤色明暗和色相轻微统一、局部提亮 / 压暗；与全局曝光、白平衡、曲线及色彩空间正确衔接。</td><td>强度、范围和蒙版可调；不得把全图白平衡或肤色修正隐藏地写入原始 RAW 参数。</td><td>避免肤色漂灰、偏橙、偏红、过饱和；对不同肤色和混合光源单独评审。</td></tr>
+<tr><td><strong>P0 自然美白 / 肤色提亮</strong></td><td>支持全脸、身体和自定义区域的自然提亮；将亮度调整与色相 / 饱和度修正分开，支持肤色均匀、局部暗沉修正和暖 / 冷倾向微调。目标是照片中的视觉提亮，不改变用户真实身份或承诺改变生理肤色。</td><td>独立控制提亮强度、肤色均匀度、色温倾向和作用范围；默认仅作用于皮肤蒙版，保护眼白、牙齿、头发、衣物与背景；支持脸部和身体分别调节、局部擦除及原图对比。</td><td>多种肤色、混合光源、阴影、逆光及高光样片验证；不得出现死白、灰脸、偏蓝 / 偏粉、皮肤与脖子断层、五官边缘光晕或高光剪切；强度为 0 时结果与输入一致。</td></tr>
+<tr><td><strong>P0 特征性皮肤标记独立美颜开关</strong></td><td>痣、胎记、雀斑、纹身分别提供独立启用 / 关闭选项；启用后支持淡化或修复，不得将四类特征绑定为一个总开关。默认关闭自动修饰，用户主动开启后才处理。</td><td>每类效果均提供独立开关、强度滑杆、目标区域选择 / 蒙版、局部擦除与恢复、前后对比、撤销重做；支持自动检测后由用户确认，也支持手动画笔指定。可选择“轻度淡化”或“尽可能移除”模式；纹身修复需标注为高风险生成式 / 内容重建效果，并输出独立图层。</td><td>分别测试不同肤色、大小 / 颜色 / 密度、遮挡、毛发、衣物边缘与复杂背景；关闭时必须与输入图像一致。不得误伤相邻皮肤纹理、毛发、衣物或背景；生成式移除必须提示可能出现不真实纹理，并可一键恢复原貌。</td></tr>
+<tr><td><strong>P0 身体皮肤瑕疵修复</strong></td><td>支持可见皮肤区域的痘痘、痘印、临时红点、轻微色斑、局部色差、蚊虫叮咬印等修复；提供手动修复 / 克隆笔刷，自动识别仅作为辅助建议。</td><td>支持身体皮肤蒙版与手动加减选区；笔刷尺寸、羽化、硬度、透明度、取样源、局部强度均可调；面部、颈部、肩臂、腿部等区域可分别处理；效果进入独立节点并可撤销。</td><td>测试不同肤色、毛发、纹身、痣、雀斑、衣物边缘和复杂背景；默认不得自动删除痣、胎记、纹身等身份 / 个体特征；避免重复纹理、模糊块、接缝和背景被误修。</td></tr>
+<tr><td><strong>P1 身体肤色均匀 / 局部提亮</strong></td><td>支持颈部、肩部、手臂、手背、腿部等区域的肤色均匀、晒痕弱化和局部明暗调整；身体不同区域可分别控制。</td><td>优先使用身体皮肤分割与用户修正蒙版；提供分区强度、过渡羽化、颜色匹配和保护区域，防止效果污染衣服、饰品、头发及背景。</td><td>检查脸 / 脖子 / 手臂 / 腿部之间的色差过渡；不得出现肤色拼接线、边缘发光、皮肤蜡化或整体色调不一致。</td></tr>
+<tr><td><strong>P1 身体纹理与小范围修整</strong></td><td>支持轻度弱化细小疤痕、妊娠纹、干燥纹理、膝肘暗沉和局部压痕；结构性纹理必须保留可调节程度，不默认完全抹除。</td><td>各项效果独立开关和强度；身体轮廓、关节、肌肉阴影及自然褶皱默认受保护；高级生成式修复必须单独标记并提供结果图层。</td><td>避免把膝盖 / 肘部磨成无结构色块、身体轮廓漂移、肌肉阴影消失或衣物边缘变形；强度为 0 时无变化。</td></tr>
+<tr><td><strong>P0 瑕疵修复</strong></td><td>提供修复画笔 / 克隆工具，支持笔刷尺寸、羽化、硬度、透明度、取样源和对齐模式。</td><td>笔刷轨迹可撤销；修复区域可受蒙版限制；支持笔触预览及取样点显示。</td><td>测试痘痘、斑点、背景纹理、重复纹理和高反差边缘；不可产生明显重复图案或接缝。</td></tr>
+<tr><td><strong>P1 眼睛 / 牙齿增强</strong></td><td>眼白与虹膜局部提亮、细节增强；牙齿轻度去黄和提亮，避免全局高光漂白。</td><td>依赖对应语义蒙版；每个子效果独立开关、强度可调、可局部擦除。</td><td>眼白不变纯白、虹膜纹理保留；牙齿保留明暗层次，不出现蓝白色或过曝。</td></tr>
+<tr><td><strong>P1 液化 / 局部形变</strong></td><td>位移场或网格变形，支持推 / 拉、膨胀 / 收缩、笔刷半径、强度和冻结 / 保护区域。</td><td>显示笔刷范围和形变前后对比；控制点 / 笔触可撤销；可保护背景直线、头发边缘和身体轮廓。</td><td>检查建筑线条、门框、衣纹、发丝与身体边缘；限制极端位移并支持关闭 / 重置；不得静默自动改变身体比例。</td></tr>
+<tr><td><strong>P1 背景 / 发丝精修</strong></td><td>改进头发与背景边界，提供背景虚化或背景调整的可选蒙版基础。</td><td>蒙版边缘可视化；用户能恢复被错误抹除的发丝 / 配饰；背景效果单独成层。</td><td>逆光、卷发、半透明发丝、白衣白墙、眼镜边缘等困难样片无明显抠图白边。</td></tr>
+<tr><td><strong>P2 妆容 / 体型 / 高级重建</strong></td><td>虚拟妆容、唇色、腮红、局部塑形或生成式修复，作为可选扩展，不作为首期阻塞项。</td><td>必须明确标识生成式结果；提供前后对比、区域蒙版、撤销和强度控制。</td><td>单独进行真实感、身份一致性、伪影和用户可控性评审；不得与基础磨皮默认捆绑启用。</td></tr>
+</tbody></table>
+
+<h3>皮肤美白与身体瑕疵修复专项要求</h3>
+<div class="callout"><strong>产品原则：</strong>美白是对当前照片的可控视觉提亮与肤色协调，不应把不同肤色统一处理成单一白色。身体修复应默认“用户选择后修、保留特征、非破坏编辑”，痣、胎记、雀斑、纹身分别独立控制且默认关闭，不自动抹除用户可能希望保留的特征。</div>
+<ul>
+<li><strong>面部与身体分区：</strong>面部、耳朵、颈部、肩臂、手部、腿部等皮肤区域需能分别选择与调节；自动分割不可靠时提供手动蒙版加减笔刷，且支持保存为项目资源。</li>
+<li><strong>提亮与颜色分离：</strong>亮度 / 曝光、色温、色相和饱和度需独立控制。算法优先修正照片光照造成的暗沉与局部色差，避免通过大幅降低饱和度把肤色做成灰白色；保留阴影和高光的立体层次。</li>
+<li><strong>修复工具：</strong>提供修复画笔与克隆工具，包含笔刷大小、硬度、羽化、透明度、取样源、对齐模式和撤销；可限制在皮肤蒙版内，支持按住查看原图、局部恢复和节点强度调整。</li>
+<li><strong>瑕疵类别：</strong>痘痘 / 痘印、红点、轻微色斑、晒痕、局部暗沉、轻微疤痕、妊娠纹与干燥纹理可作为独立效果类别。痣、胎记、雀斑、纹身分别提供独立开关且默认关闭；只有用户单独开启对应功能并确认目标区域后才允许修饰。</li>
+<li><strong>身体边缘保护：</strong>重点保护手指缝、腋下边缘、肩线、腿部轮廓、发丝、饰品、泳衣 / 衣物边界、纹身和背景直线；蒙版需支持边缘羽化、局部修边与保护笔刷，避免抠图溢出。</li>
+<li><strong>一致性控制：</strong>可选启用脸部与颈部、肩臂等区域的色彩协调，但必须提供强度与禁用选项；不能把所有身体区域自动拉到相同亮度，也不能把自然阴影全部消除。</li>
+<li><strong>验收样片：</strong>覆盖不同肤色、室内暖光、日光、逆光、混合光、皮肤高光、身体毛发、纹身 / 痣、浅色衣物、复杂背景及高分辨率图像；在 100% 和 200% 检查伪影，并在缩放适配画面检查整体肤色自然度。</li>
+</ul>
+
+<h3>痣 / 胎记 / 雀斑 / 纹身：独立开关与修饰模式</h3>
+<div class="callout"><strong>交互规则：</strong>四类特征必须各自拥有开关，互不影响。默认全部关闭，保持原图特征；用户开启某一项后，只处理该类被识别且经用户确认的区域。关闭开关应立即撤销该效果，而不是只隐藏控件。</div>
+<ul>
+<li><strong>痣：</strong>单独开关；支持逐个选择、批量选择、强度调节与局部排除。提供“保留 / 淡化 / 移除”选项；不得因自动磨皮或肤色均匀而顺带抹除。</li>
+<li><strong>胎记：</strong>单独开关；支持用户涂选或修正自动区域。提供轻度弱化与修复两种模式；大面积或边界复杂的胎记必须显示蒙版预览，避免肤色出现色块或边缘断层。</li>
+<li><strong>雀斑：</strong>单独开关；支持降低对比度、降低可见度、保留部分雀斑等自然修饰强度。不得将雀斑检测结果直接作为全脸模糊区域，必须保留皮肤纹理。</li>
+<li><strong>纹身：</strong>单独开关；支持局部淡化与移除两种模式。纹身移除涉及较大范围的内容重建，应使用独立修复图层 / 节点，允许预览、重新生成、蒙版修边和一键恢复；不能承诺所有复杂背景都能无痕恢复。</li>
+<li><strong>检测与确认：</strong>自动检测只生成候选框 / 蒙版，不直接提交最终像素修改。置信度低、特征相互重叠或与头发 / 衣物 / 饰品相邻时，要求用户确认或手动修正。</li>
+<li><strong>非破坏式实现：</strong>每类效果保存 enabled、mode、strength、maskRef、modelVersion 等参数；禁用后渲染图必须回到该节点输入，项目保存并重开后开关状态和蒙版保持一致。</li>
+<li><strong>验收标准：</strong>逐项验证四个开关互相独立；开关关闭时像素输出不受该效果影响；强度为 0 时等同关闭；撤销 / 重做、保存 / 重开、复制参数和全分辨率导出均保持状态一致。</li>
+</ul>
+
+<h3>法令纹等局部美颜的专项算法要求</h3>
+<div class="callout"><strong>产品原则：</strong>目标是“弱化而非删除”。法令纹与眼下纹路常由面部几何、表情、光照和肤色共同形成，不能把它们简单视作需要擦除的瑕疵。默认采用轻度、可撤销、局部可控的修饰，保留真实的面部结构和身份特征。</div>
+<ul>
+<li><strong>区域定义：</strong>建立法令纹（鼻翼至嘴角）、嘴角纹、额头横纹、眉间纹、鱼尾纹、眼下细纹 / 黑眼圈、颈纹等区域标签。检测模型可给出建议区域，但必须允许用户调整范围；关键点或分割低置信度时不得自动强修。</li>
+<li><strong>分型处理：</strong>优先区分细纹纹理、色素 / 色差、局部阴影和结构性凹陷。分别使用纹理保留型平滑、局部色调 / 对比调整、受约束的阴影减弱；生成式补绘仅作为后续可选能力，不能作为首期唯一实现。</li>
+<li><strong>边缘保护：</strong>保护鼻翼、唇线、嘴角、眼睑、下颌轮廓及高对比边界；区域蒙版需要平滑羽化，并避免效果越过法令纹走向污染鼻子或嘴唇。</li>
+<li><strong>参数与交互：</strong>至少提供总强度、区域强度、过渡 / 羽化、细节保留和局部恢复；按区域分别开关；提供分屏 / 按住查看原图、撤销重做、单节点禁用和重置。禁止默认自动将所有纹路清零。</li>
+<li><strong>高分辨率与预览：</strong>检测和蒙版可在代理图上运行，但须映射回原图坐标并检查边缘；导出阶段需全分辨率复算或经验证的高质量映射，避免放大低分辨率修补区域造成糊边。</li>
+<li><strong>验收用例：</strong>同一人物微笑 / 中性表情、正面 / 侧面、顺光 / 侧光、不同年龄与肤色；同时检查法令纹变浅后面中体积是否仍自然、嘴角是否完整、皮肤纹理是否保留。由产品团队定义“轻 / 中 / 强”参考图并进行盲评。</li>
+</ul>
+
+<h3>算法处理顺序与图像质量要求</h3>
+<ol>
+<li><strong>统一坐标：</strong>先处理 EXIF 方向并建立唯一的原图坐标系；人脸框、关键点、笔刷轨迹、蒙版、裁剪和液化控制点均保存为原图坐标或明确标注的变换坐标，禁止直接保存屏幕像素坐标。</li>
+<li><strong>先分析、后修改：</strong>检测、关键点、分割属于分析节点；磨皮、修复、调色、液化属于编辑节点。分析结果缓存要带图像资产哈希、模型版本、参数版本和坐标变换版本。</li>
+<li><strong>高分辨率一致性：</strong>交互预览可以使用代理图，但完整分辨率导出必须重新以原始尺寸计算或使用经过验证的映射；不能简单放大低分辨率蒙版而不做边缘质量检查。</li>
+<li><strong>色彩与精度：</strong>算法要声明输入 / 输出色彩空间、像素格式、数值范围和 alpha 处理方式；尽量在定义明确的工作空间计算，避免对 gamma 编码 RGB 直接进行不适当的模糊 / 混合。</li>
+<li><strong>纹理保护：</strong>磨皮必须区分低频肤色变化和高频纹理，至少提供保守默认值；不能将频率分离作为“质量保证”的唯一依据，最终以真实样片与盲测评审为准。</li>
+<li><strong>可控合成：</strong>所有算法效果以参数化节点 + 蒙版 + 混合强度合成；参数修改支持撤销 / 重做、保存 / 重开、复制到其他照片时的兼容性检查。</li>
+<li><strong>降级与失败：</strong>模型加载失败、GPU 不可用、低置信度、多人脸歧义、内存不足时，提示具体原因并提供手动工具 / CPU 回退；不得输出静默损坏的图像。</li>
+</ol>
+
+<h3>建议的算法接口契约</h3>
+<pre>PortraitAnalysisInput {
+  assetId, imageSize, coordinateSpace, colorSpace,
+  imageRevision, modelVersion, requestedFaces?
+}
+PortraitAnalysisOutput {
+  faces: [{ faceId, bbox, landmarks?, confidence }],
+  masks: [{ class, assetRef, width, height, confidence }],
+  warnings: [{ code, message, affectedRegion? }]
+}
+PortraitEditNode {
+  nodeId, algorithmId, algorithmVersion, enabled,
+  params, maskRef?, blendMode, opacity, inputNodeIds
+}</pre>
+<p class="small">以上为跨 Rust / TypeScript 的概念契约，不是可直接编译的最终类型。实际协议还需定义坐标单位、浮点范围、蒙版像素格式、错误码、取消语义和版本兼容策略，并用契约测试锁定。</p>
+
+<h3>算法验收基线（建议目标，必须用自有测试集校准）</h3>
+<ul class="checklist">
+<li>建立授权且可重复使用的人像测试集，覆盖不同肤色、年龄段、性别呈现、脸部尺寸、姿态、光线、眼镜、胡须、遮挡、发型、多人脸和复杂背景；单独记录困难样片，不只用“好看”的样片。</li>
+<li>人脸检测 / 分割分别报告漏检、误检、IoU / 边界质量等适用指标，并按场景分桶；模型总体均值不能掩盖某一类人像明显退化。</li>
+<li>磨皮和局部增强由至少两类检查组成：自动图像回归（差异图、边缘、色彩变化）与人工盲评（自然度、纹理保留、身份特征保持、伪影）。</li>
+<li>为每个算法保存固定输入、参数、模型版本和预期输出；升级模型 / GPU shader 后执行黄金样片回归，允许有阈值的数值差异，不允许未经评审的明显视觉退化。</li>
+<li>质量指标应由产品和算法团队在样片评审后确定。未经实测，不得把某个准确率、耗时或“无伪影”作为已达成承诺。</li>
+<li>涉及人脸图片上传云端前，必须在具体操作处告知上传范围、用途、Provider、保留政策和费用（如适用）；默认不把人脸分析结果用于训练或其他用途。</li>
+</ul>
+<div class="callout warn"><strong>明确边界：</strong>首期重点是可控的局部精修，不承诺所有照片一键完美。人脸 / 蒙版模型应当提供辅助而非强制自动修改；对于检测失败或模型不确定的区域，优先让用户确认。</div>
+</section>
+
+<section id="color">
+<h2>07. 色彩管理、RAW 与导出</h2>
+<h3>RAW 首期范围</h3>
+<p>RAW 支持必须以明确的相机样片矩阵验收。不同相机 RAW 的压缩方式、元数据、色彩矩阵和白平衡信息可能不同，因此不能简单地把“能读取文件”视为“完成 RAW 开发”。</p>
+<table><thead><tr><th>子系统</th><th>职责</th><th>首期要求</th></tr></thead><tbody>
+<tr><td><strong>格式探测</strong></td><td>识别扩展名 / 容器，验证文件并提取元数据</td><td>支持格式清单、失败提示与样片测试集</td></tr>
+<tr><td><strong>RAW 解码</strong></td><td>解码、去马赛克、白平衡、黑电平与基础色彩转换</td><td>明确所选库 / 系统组件的相机覆盖与许可证</td></tr>
+<tr><td><strong>RAW 开发参数</strong></td><td>曝光补偿、白平衡、色调、降噪、锐化（依实现能力）</td><td>区分原始开发参数与普通 RGB 调整节点</td></tr>
+<tr><td><strong>输入色彩</strong></td><td>读取嵌入 ICC；无配置文件时按策略解释并提示</td><td>有已知参考色块的测试图片</td></tr>
+<tr><td><strong>工作空间</strong></td><td>定义内部像素格式、色彩空间、计算精度和动态范围</td><td>避免无记录的重复转换与过早裁切</td></tr>
+<tr><td><strong>输出</strong></td><td>目标 ICC、位深、编码质量、元数据保留策略</td><td>JPEG / PNG 必做；TIFF 与高位深支持依依赖验证定范围</td></tr>
+</tbody></table>
+<h3>色彩流程</h3>
+<pre>文件导入
+  ├─ JPEG / PNG / TIFF：解码 + EXIF 方向 + 输入 ICC 解释
+  └─ RAW：RAW 解码器 + 去马赛克 + 相机相关色彩 / 白平衡处理
+                 ↓
+       内部规范化工作表示
+       (pixel format + working color space + precision)
+                 ↓
+       非破坏式编辑图执行
+       (曝光 / 曲线 / LUT / 人像 / 蒙版 / 合成)
+                 ↓
+       输出色彩转换 + gamut handling + quantization
+                 ↓
+       编码 + EXIF / ICC 写入策略 + 文件校验</pre>
+<h3>色彩相关的明确决策项</h3>
+<ul>
+<li>选择内部工作空间与精度，并记录所有转换边界；不要只列出 sRGB、Display P3、Oklab 名称就视为完成色彩管理。</li>
+<li>1D / 3D LUT、.cube 解析、插值方式、混合强度和缓存烘焙应分别测试；不同插值可能产生数值差异。</li>
+<li>自动白平衡与自动曝光是建议值，不应无条件覆盖 RAW 原始开发状态；应作为可撤销节点。</li>
+<li>EXIF 方向应在坐标模型中统一处理，液化控制点、蒙版和裁剪框必须与图像变换保持一致。</li>
+<li>导出需要处理文件名冲突、临时文件、磁盘不足、取消、写入失败和输出后校验。</li>
+</ul>
+</section>
+
+<section id="ai">
+<h2>08. AI Provider 架构与契约</h2>
+<p class="section-intro">云端模型优先，但 UI 与业务层不应绑定任何一家厂商。AI 能力应声明化；只有 Provider 明确声明支持的输入、输出和操作，产品才显示相应功能。</p>
+<h3>Provider 分类</h3>
+<table><thead><tr><th>类型</th><th>输入</th><th>输出</th><th>用途</th></tr></thead><tbody>
+<tr><td><strong>Parameter Advisor</strong></td><td>缩略图 / 图像分析 / 用户偏好</td><td>经 schema 校验的参数建议</td><td>自动曝光、白平衡、调色与修图建议</td></tr>
+<tr><td><strong>Image Edit Provider</strong></td><td>原图、可选蒙版、指令、参考图</td><td>编辑结果图像与元数据</td><td>自然语言编辑、背景替换、对象移除等</td></tr>
+<tr><td><strong>Workflow Provider</strong></td><td>工作流 ID、输入资源、参数映射</td><td>图像、蒙版、任务状态</td><td>ComfyUI 或其他工作流服务</td></tr>
+<tr><td><strong>Local Vision Provider</strong></td><td>本地图像 / 裁剪</td><td>关键点、分割、质量分数</td><td>离线分析；非首期云端主路径</td></tr>
+</tbody></table>
+<h3>能力声明</h3>
+<pre>ProviderCapabilities {
+  input: {
+    imageFormats: string[],
+    maxInputBytes?: number,
+    maxWidth?: number,
+    maxHeight?: number,
+    supportsMask: boolean,
+    supportsReferenceImages: boolean,
+    supportsMultipleImages: boolean
+  },
+  output: {
+    imageFormats: string[],
+    returnsImage: boolean,
+    returnsStructuredParameters: boolean,
+    supportsStreamingProgress: boolean
+  },
+  execution: {
+    supportsCancellation: boolean,
+    supportsIdempotencyKey: boolean,
+    expectedNetwork: "required" | "optional" | "none"
+  }
+}</pre>
+<h3>标准任务生命周期</h3>
+<div class="flow">
+  <div class="step"><b>validate</b><span>校验 Provider 配置、能力、输入尺寸、凭据与参数 schema</span></div>
+  <div class="step"><b>prepare</b><span>创建安全临时资源、必要缩放、上传准备与任务 ID</span></div>
+  <div class="step"><b>execute</b><span>发起请求、限流、超时控制、进度事件与取消</span></div>
+  <div class="step"><b>collect</b><span>校验结果、落盘、生成预览、用户确认后应用到项目</span></div>
+</div>
+<h3>建议统一任务协议</h3>
+<pre>AiJobRequest {
+  jobId: UUID,
+  providerId: string,
+  operation: "analyze" | "suggest" | "edit" | "workflow",
+  inputAssetIds: AssetId[],
+  maskAssetId?: AssetId,
+  prompt?: string,
+  referenceAssetIds?: AssetId[],
+  parameters: ValidatedJson,
+  projectId: UUID,
+  documentRevision: number
+}
+
+AiJobEvent =
+  | { type: "queued"; jobId: UUID }
+  | { type: "progress"; jobId: UUID; percent?: number; message?: string }
+  | { type: "completed"; jobId: UUID; resultAssetIds: AssetId[]; metadata: object }
+  | { type: "failed"; jobId: UUID; code: string; userMessage: string; retryable: boolean }
+  | { type: "cancelled"; jobId: UUID }
+
+关键约束：
+- Provider 原始响应必须先通过适配器解析与 schema 校验。
+- 不将未校验的模型 JSON 直接写入编辑图。
+- 参数建议需要范围限制、版本号、单位和语义定义。
+- 图像结果写入新资产 / 新图层，不覆盖源图。
+- 任务完成时检查 documentRevision；若文档已变化，提示用户选择应用方式。
+- 超时、取消、重试、限流、认证失败与内容拒绝需映射到稳定错误码。</pre>
+<h3>云端请求与隐私</h3>
+<ul>
+<li>提供每个 Provider 的连接测试、模型名、API base URL、请求超时、图像尺寸限制与可选自定义请求头。</li>
+<li>API Key 存入 Windows Credential Manager 或经过验证的安全凭据封装；不存前端持久化、项目文件或日志。</li>
+<li>上传前显示目标服务、图片范围、蒙版 / 参考图、预计发送的数据，并提供明确确认；记录可清除的任务历史。</li>
+<li>支持模型不可用、额度耗尽、限流、网络断开、上传失败、返回格式异常和服务端拒绝等情况。</li>
+<li>对于自定义 base URL，需要防范 SSRF / 本地网络探测：限制协议、重定向、目标地址与端口；对本地服务采用显式用户授权和单独策略。</li>
+<li>不能承诺所有服务都支持取消；若服务端不支持取消，应用停止等待并忽略过期结果，但需说明远端任务可能仍继续执行。</li>
+</ul>
+<div class="callout warn"><strong>云端 AI 的产品规则：</strong>远程图像编辑通常会上传图像。界面必须明确提示数据去向，并为本地纯参数调整提供不上传图片的路径。供应商保留期限、训练政策和地区处理规则应以用户实际选择的服务条款为准。</div>
+</section>
+
+<section id="scheduler">
+<h2>09. 任务调度、内存与缓存</h2>
+<table><thead><tr><th>优先级</th><th>任务类别</th><th>调度策略</th></tr></thead><tbody>
+<tr><td><strong>P0 交互</strong></td><td>当前画布预览、笔刷反馈、拖动滑块</td><td>可合并请求；丢弃过期预览；限制并发，优先响应最新状态。</td></tr>
+<tr><td><strong>P1 前台</strong></td><td>人脸检测、分割、用户触发的 AI 请求</td><td>可见进度；支持取消；避免阻塞交互预览。</td></tr>
+<tr><td><strong>P2 后台</strong></td><td>缩略图、预分析、预取缓存</td><td>空闲时执行；可暂停或取消；设置 CPU / GPU 预算。</td></tr>
+<tr><td><strong>P3 导出</strong></td><td>全分辨率渲染与编码</td><td>显式任务进度；可取消；不与交互任务争抢全部资源。</td></tr>
+</tbody></table>
+<h3>关键机制</h3>
+<ul>
+<li>每个请求携带 jobId、documentRevision 和取消令牌；取消不等于保证底层第三方计算立即终止。</li>
+<li>滑块交互采用防抖 / 节流和任务合并；只展示最新有效请求结果。</li>
+<li>缓存键必须包含源资产内容标识、节点参数、蒙版版本、工作空间、分辨率与算法版本。</li>
+<li>GPU 纹理池和 CPU 内存缓存都要设置预算；在内存压力、设备丢失或文档关闭时释放可重建资源。</li>
+<li>避免一次性常驻原图、多个全尺寸中间图、蒙版和 AI 输出；高分辨率处理按瓦片或阶段释放资源，具体策略以实测决定。</li>
+<li>所有长任务返回结构化进度与错误；不要通过高频 IPC 发送像素数据。</li>
+</ul>
+<h3>IPC 原则</h3>
+<div class="grid">
+  <div class="card"><h3>允许跨 IPC</h3><p>资产 ID、受控路径引用、节点参数 DTO、任务 ID、进度、错误、尺寸、元数据与结果引用。</p></div>
+  <div class="card"><h3>避免跨 IPC</h3><p>反复传输完整原图字节、全尺寸中间缓冲、无边界的 Base64 字符串和大量逐帧像素数据。</p></div>
+</div>
+<p>显示大图可考虑受控的 Tauri asset protocol、自定义协议或受权限约束的本地资源服务；具体方案必须按 Tauri 版本、Windows WebView2 行为和 CSP 进行验证，不应直接开放任意文件系统访问。</p>
+</section>
+
+<section id="storage">
+<h2>10. 持久化与资产存储</h2>
+<div class="grid">
+  <div class="card"><h3>SQLite 保存</h3><ul><li>项目、图层、节点、蒙版元数据</li><li>历史索引、恢复点、任务记录</li><li>模型 Provider 配置（不含明文密钥）</li><li>资源索引、缩略图索引、迁移版本</li></ul></div>
+  <div class="card"><h3>资产目录保存</h3><ul><li>预览代理、缩略图、蒙版栅格</li><li>AI 结果图、参考图副本（按用户设置）</li><li>中间渲染快照、必要的检查点</li><li>缓存与项目资产分离，允许重新生成缓存</li></ul></div>
+</div>
+<h3>建议项目与缓存分离</h3>
+<pre>AppData/
+├─ database/                 # SQLite 与迁移状态
+├─ credentials/              # 若采用自管封装；优先系统凭据库
+├─ cache/
+│  ├─ thumbnails/
+│  ├─ proxies/
+│  ├─ render/
+│  └─ model-downloads/
+├─ logs/                     # 结构化脱敏日志
+└─ projects/
+   └─ {project-id}/
+      ├─ project.json        # 可选的人类可读文档快照 / 导入导出格式
+      ├─ assets/
+      └─ checkpoints/</pre>
+<p>不要求必须使用上述物理目录。关键是：项目可迁移资产与可丢弃缓存分开；外部原图默认不复制、不修改，但项目需记录其引用和缺失时的重新定位流程。</p>
+</section>
+
+<section id="security">
+<h2>11. 安全、隐私与发布</h2>
+<div class="grid">
+  <div class="card"><h3>桌面安全</h3><ul><li>默认拒绝未声明的 Tauri capability。</li><li>命令参数严格校验；路径操作防止目录穿越。</li><li>前端 CSP 最小化；不允许任意远程脚本注入。</li><li>外部 URL 使用白名单 / 用户确认打开策略。</li></ul></div>
+  <div class="card"><h3>AI 安全</h3><ul><li>凭据不进入 JS 日志、项目文件或错误栈。</li><li>请求日志默认不记录原始图片与完整提示词中的敏感内容。</li><li>自定义服务地址防止 SSRF、重定向绕过与凭据泄漏。</li><li>云端上传前明确提示并允许取消。</li></ul></div>
+  <div class="card"><h3>资源安全</h3><ul><li>限制图片尺寸、解码时间、压缩炸弹风险与临时文件大小。</li><li>校验导入文件真实格式，不仅信任扩展名。</li><li>导入外部工作流 / 模型配置时进行 schema 校验。</li><li>清理临时资源；日志与崩溃报告可脱敏。</li></ul></div>
+  <div class="card"><h3>交付与更新</h3><ul><li>Windows 安装包签名与版本策略。</li><li>更新包完整性验证、失败回滚与发布通道。</li><li>第三方库和模型许可证清单（SBOM 可作为发布门槛）。</li><li>崩溃收集需告知用户并获得适当授权。</li></ul></div>
+</div>
+</section>
+
+<section id="testing">
+<h2>12. 测试策略与验收指标</h2>
+<p class="section-intro">以下指标是建议的项目验收起点，不是已经测得的性能承诺。需要在指定测试机器、代表性图片集与明确操作序列下采集数据，并在首个性能 PoC 后校准。</p>
+<table><thead><tr><th>领域</th><th>测试方法</th><th>建议验收定义</th></tr></thead><tbody>
+<tr><td><strong>功能正确性</strong></td><td>算子单元测试、文档 round-trip、编辑历史测试</td><td>保存 / 重开后节点参数、蒙版引用与图层顺序保持一致；无静默数据丢失。</td></tr>
+<tr><td><strong>图像质量</strong></td><td>固定输入、黄金样片、视觉回归与人工评审</td><td>基础色彩算子有数值容差；人像算法有质量检查集和人工审查标准。</td></tr>
+<tr><td><strong>预览延迟</strong></td><td>指定 CPU / GPU、代表性 12MP / 24MP 图片、常用节点链</td><td>先建立基线；目标设备上常用调色操作争取 p95 低于 100ms，复杂人像操作单独设定目标。</td></tr>
+<tr><td><strong>内存 / GPU</strong></td><td>大图、多图层、长时间操作、设备丢失模拟</td><td>定义内存预算；超限时可释放缓存、降采样或提示，而不是崩溃。</td></tr>
+<tr><td><strong>RAW 兼容</strong></td><td>相机品牌 / 型号 / 文件变体矩阵</td><td>对列入首发清单的每个型号至少有样片、元数据与输出回归；未验证型号明确提示。</td></tr>
+<tr><td><strong>AI 契约</strong></td><td>Mock Provider、沙盒端点、错误注入</td><td>覆盖超时、限流、无效 JSON、取消、重试、认证失败、结果下载失败和文档版本变化。</td></tr>
+<tr><td><strong>安全</strong></td><td>路径穿越、超大文件、恶意配置、网络重定向测试</td><td>不泄漏凭据；越权文件访问被拒绝；外部服务错误可安全呈现。</td></tr>
+<tr><td><strong>发布稳定性</strong></td><td>干净 Windows 环境安装 / 卸载 / 更新 / 恢复</td><td>安装、升级、失败回滚、离线启动和项目迁移均有记录。</td></tr>
+</tbody></table>
+<h3>必须建立的测试素材集</h3>
+<ul class="checklist">
+<li>有授权的 JPEG / PNG / TIFF 基础图像：色块、渐变、噪声、细节纹理、透明度、极端曝光。</li>
+<li>有授权的人像：不同肤色、光照、年龄、姿态、遮挡、多人脸、眼镜、胡须、发丝、妆容、不同脸部尺寸和复杂背景；记录困难样片与人工标注。</li>
+<li>人像算法黄金集：人脸框 / 关键点标注、语义蒙版参考、瑕疵修复局部、液化直线约束样片，以及对应算法版本和参数。</li>
+<li>有授权的 RAW 样片：来自计划支持的相机型号，包含不同白平衡、曝光与压缩变体。</li>
+<li>色彩参考样片：嵌入 ICC、缺少 ICC、EXIF 方向不同、广色域输入与输出案例。</li>
+<li>AI 契约夹具：成功结果、无效响应、超时、限流、认证失败、损坏图像和不支持的格式。</li>
+</ul>
+</section>
+
+<section id="roadmap">
+<h2>13. 分阶段实施计划</h2>
+<p class="section-intro">RAW 属于首期要求，因此 RAW 解码验证要在早期进行，而不是等其他模块完成后才处理。建议采用阶段门槛：每一阶段先通过技术验证和验收，再扩大实现范围。</p>
+<div class="timeline">
+  <div class="phase">
+    <div class="phase-label"><b>PHASE 0</b><span>1–2 周 · 风险验证</span></div>
+    <div class="phase-body"><h3>技术 Spike 与架构决策记录 <span class="pill p0">最高优先级</span></h3>
+      <ul><li>建立 Tauri 2 + React + TypeScript + Vite 工程和 Windows 构建流水线。</li><li>验证 RAW 候选库：样片覆盖、构建、许可证、解码结果与性能。</li><li>验证 1–2 个云端图像编辑服务的真实 API、图片输入、结果获取、限流与数据政策。</li><li>验证 WGPU adapter 可用性、简单 shader、设备丢失与 CPU fallback。</li><li>记录 ADR：图像像素表示、色彩工作空间、项目格式、Provider DTO、凭据策略。</li></ul>
+      <p><strong>阶段门槛：</strong>关键依赖有 PoC 结果、许可记录和替代方案；未验证项清楚列出。</p>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-label"><b>PHASE 1</b><span>2–4 周 · 应用骨架</span></div>
+    <div class="phase-body"><h3>项目、画布、导入与导出</h3>
+      <ul><li>完成命令边界、错误模型、任务 ID、事件与取消协议。</li><li>支持普通位图导入、预览、缩放、平移、前后对比。</li><li>实现项目创建、保存、重开、原图引用与基础撤销重做。</li><li>定义项目 schema、资源 ID、迁移版本和自动恢复最小闭环。</li></ul>
+      <p><strong>阶段门槛：</strong>图片可打开、保存项目、重开、进行一次基础调整并导出；原图不被覆盖。</p>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-label"><b>PHASE 2</b><span>3–5 周 · 图像核心</span></div>
+    <div class="phase-body"><h3>RAW 开发、色彩管线与基础调色</h3>
+      <ul><li>完成列入首发矩阵的 RAW 解码与基础开发流程。</li><li>实现曝光、白平衡、对比度、曲线、HSL、LUT 和输出色彩转换。</li><li>建立 CPU 参考算子、黄金样片、ICC / EXIF 回归测试。</li><li>加入代理图预览、节点缓存和完整分辨率导出。</li></ul>
+      <p><strong>阶段门槛：</strong>RAW 样片能按支持矩阵导入；基础调色可回放；导出色彩与元数据策略可测试。</p>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-label"><b>PHASE 3</b><span>3–6 周 · 人像基础</span></div>
+    <div class="phase-body"><h3>人脸、蒙版、磨皮与局部调整</h3>
+      <ul><li>先建立人像黄金测试集与算法评审表；锁定人脸检测、关键点和分割的输入输出契约。</li><li>完成皮肤 / 五官 / 头发及身体皮肤蒙版、人工加减笔刷、自然磨皮、肤色均匀 / 自然提亮和局部混合。</li><li>实现法令纹、额头纹、眉间纹、鱼尾纹、嘴角纹、眼下细纹 / 黑眼圈的分区弱化；加入自然美白 / 肤色提亮、肤色均匀、身体痘印 / 红点 / 轻微色斑 / 晒痕 / 疤痕等瑕疵修复。各效果独立强度、蒙版、细节 / 轮廓保护、局部恢复和前后对比。</li><li>实现修复 / 克隆笔刷、液化控制、冻结保护区域、坐标映射与撤销重做。</li><li>增加眼睛 / 牙齿增强、发丝边缘优化作为可选节点；妆容和生成式重建后续再评估。</li><li>验证低置信度处理、模型缺失、GPU 失败、全分辨率导出和不同肤色 / 光照的视觉回归。</li></ul>
+      <p><strong>阶段门槛：</strong>测试集覆盖表完成；普通用户不看教程即可完成“打开照片—一键美颜—微调—对比—导出”的可用性测试；专业参数默认收起，所有主要效果可独立开关；检测 / 分割有分场景指标；磨皮、法令纹等局部美颜、自然美白、身体瑕疵修复和液化通过盲评与伪影检查；蒙版、参数和算法版本可保存、重开、撤销并参与全分辨率导出。</p>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-label"><b>PHASE 4</b><span>2–4 周 · 云端 AI</span></div>
+    <div class="phase-body"><h3>Provider 契约、自动调整与结果图层</h3>
+      <ul><li>完成 Provider 配置 UI、连接测试、凭据存储与能力声明。</li><li>实现图片分析 / 参数建议和图像编辑两条不同路径。</li><li>完成上传确认、进度、超时、取消、限流、重试和错误映射。</li><li>AI 输出写入新资产 / 图层；应用前可对比，支持撤销与版本记录。</li></ul>
+      <p><strong>阶段门槛：</strong>至少一个云端 Provider 通过契约测试；模型返回异常不会损坏项目。</p>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-label"><b>PHASE 5</b><span>持续迭代</span></div>
+    <div class="phase-body"><h3>WGPU 优化、批量处理与发布强化</h3>
+      <ul><li>依据性能分析将热点算子迁移到 WGPU，并保留 CPU fallback。</li><li>完成图层增强、批量处理、预设管理、任务队列和内存预算。</li><li>完善崩溃恢复、安装包签名、更新、日志脱敏与依赖许可证清单。</li><li>视需求增加更多云端 Provider、ComfyUI、本地 ONNX 和额外 RAW 格式。</li></ul>
+      <p><strong>阶段门槛：</strong>目标 Windows 设备通过性能、稳定性、隐私、安全和发布回归测试。</p>
+    </div>
+  </div>
+</div>
+<div class="callout good"><strong>并行开发建议：</strong>Phase 0 后，文档 / IPC 契约、RAW Spike、AI Provider Spike 可以并行；图层 UI 与色彩引擎可并行实现，但必须共用同一份文档模型与参数 schema。时间估算是粗略规划，不包含团队规模、外包与模型质量未知带来的变数。</div>
+</section>
+
+<section id="risks">
+<h2>14. 风险清单与必须验证的假设</h2>
+<table><thead><tr><th>风险 / 未确认事项</th><th>为什么重要</th><th>验证方法 / 决策输出</th></tr></thead><tbody>
+<tr><td><strong>RAW 库的相机覆盖</strong></td><td>不同厂商、型号与压缩格式差异较大。</td><td>建立首发型号清单，用真实样片测试解码、元数据、白平衡与色彩；记录不支持型号和替代方案。</td></tr>
+<tr><td><strong>第三方图像库 API 与许可证</strong></td><td>名称或 README 描述不足以证明维护状态、功能和商用许可。</td><td>固定版本、审查仓库 / 许可证、构建最小样例、测量目标操作；未通过不得成为核心依赖。</td></tr>
+<tr><td><strong>WGPU 在目标设备的性能</strong></td><td>驱动、显存、适配器和 WebView 环境会影响实际表现。</td><td>目标 Windows 硬件上测量真实图像链；定义 CPU fallback 与设备丢失恢复。</td></tr>
+<tr><td><strong>云端模型 API 变化</strong></td><td>供应商请求格式、模型名、额度与返回格式可能变化。</td><td>Provider 适配器隔离 API；配置版本、mock 契约测试、错误监控和可替换实现。</td></tr>
+<tr><td><strong>云端隐私与成本</strong></td><td>照片上传可能包含个人信息；高分辨率请求会产生费用与等待。</td><td>上传前确认、尺寸限制、成本提示、缓存策略、隐私政策与可选本地路径。</td></tr>
+<tr><td><strong>图层 / 节点模型过度复杂</strong></td><td>早期实现过度通用会拖慢 MVP；过于简单又会导致重构。</td><td>先定义有限节点类型与版本化 schema；每新增一类能力通过具体用户场景验证。</td></tr>
+<tr><td><strong>跨后端输出差异</strong></td><td>浮点精度、插值、GPU shader 与 CPU 算法可能产生差异。</td><td>以数值容差、误差热图和视觉验收定义等价性，不强求所有像素绝对相同。</td></tr>
+</tbody></table>
+</section>
+
+<section id="appendix">
+<h2>15. 依赖准入清单与开发门禁</h2>
+<div class="grid">
+  <div class="card"><h3>任何新依赖合入前</h3><ul class="checklist">
+    <li>明确功能边界与是否存在标准库 / 更简单替代。</li>
+    <li>确认仓库来源、版本、维护状态、许可证与传递依赖。</li>
+    <li>在 Windows x64 干净环境成功构建。</li>
+    <li>提供最小可运行示例和错误处理。</li>
+    <li>性能测试有输入数据、机器配置和可复现步骤。</li>
+    <li>依赖升级有回归测试与锁文件更新。</li>
+  </ul></div>
+  <div class="card"><h3>每个阶段结束前</h3><ul class="checklist">
+    <li>验收用例全部通过，已知限制写入文档。</li>
+    <li>项目格式和 IPC DTO 版本兼容策略明确。</li>
+    <li>日志不泄露图片内容、密钥和敏感路径。</li>
+    <li>长任务可显示进度、处理错误并尽可能取消。</li>
+    <li>新增功能具备回归样片和自动化测试。</li>
+    <li>更新 ADR，记录决策依据和被否决的方案。</li>
+  </ul></div>
+</div>
+<h3>第一批 ADR（架构决策记录）</h3>
+<ol>
+<li><strong>ADR-001：</strong>内部图像像素格式、工作色彩空间与计算精度。</li>
+<li><strong>ADR-002：</strong>RAW 解码方案、首发相机型号矩阵与许可证。</li>
+<li><strong>ADR-003：</strong>项目文档 schema、图层 / 蒙版 / 节点模型。</li>
+<li><strong>ADR-004：</strong>预览执行后端、WGPU fallback 与缓存策略。</li>
+<li><strong>ADR-005：</strong>云端 Provider 接口、凭据管理、上传确认与错误模型。</li>
+<li><strong>ADR-006：</strong>任务优先级、取消语义、资源预算与恢复策略。</li>
+</ol>
+</section>
+
+<footer>
+  AI 人像修图软件架构基线 · Tauri 2 / React + TypeScript + Vite / Rust / WGPU / SQLite<br>
+  本文中的时间与性能数字均为规划建议；第三方库、模型、API、许可证、RAW 覆盖和目标硬件表现需在实施前验证。版本更新时应同步修改 ADR、依赖锁定和测试矩阵。
+</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,16 @@
+[package]
+name = "render-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+document = { path = "../document" }
+image-core = { path = "../image-core" }
+color-pipeline = { path = "../color-pipeline" }
+portrait-engine = { path = "../portrait-engine" }
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+thiserror = { workspace = true }
+uuid = { workspace = true }
+wgpu = "24.0.5"

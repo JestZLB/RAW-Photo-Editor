@@ -1,0 +1,10 @@
+[package]
+name = "color-pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+document = { path = "../document" }
+image-core = { path = "../image-core" }
+rayon = { workspace = true }

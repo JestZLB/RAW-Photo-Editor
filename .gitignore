@@ -1,0 +1,45 @@
+# ---- 依赖与构建产物 ----
+node_modules/
+dist/
+target/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/schemas/
+
+# ---- 日志、临时文件与备份 ----
+*.log
+*.bak
+*.tmp
+.tmp-*
+.codewiki/
+.vite/
+
+# ---- 编辑器与操作系统 ----
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# ---- 本地环境与凭据（绝不提交）----
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.key
+*.p12
+
+# ---- 内置 Photo-HQ 降噪权重（不随仓库分发）----
+# 上游未对该权重单独声明许可证，且 .bin 单文件约 64 MB。
+# 本地构建前需把 Photo-HQ-W4xEX.param / .bin 放回该目录；
+# 缺失时应用会在能力预检中如实报告不可用并禁用 AI 降噪。
+apps/desktop/src-tauri/resources/realesrgan/models/*.bin
+apps/desktop/src-tauri/resources/realesrgan/models/*.param
+
+# ---- 本地测试素材（体积大、可能含个人照片）----
+tests/fixtures/*
+!tests/fixtures/README.md
+tests/golden/*
+!tests/golden/README.md

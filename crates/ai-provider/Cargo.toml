@@ -1,0 +1,20 @@
+[package]
+name = "ai-provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+base64 = { workspace = true }
+tokio = { workspace = true }
+image-core = { path = "../image-core" }
+task-runtime = { path = "../task-runtime" }
+
+[dev-dependencies]
+tempfile = { workspace = true }
