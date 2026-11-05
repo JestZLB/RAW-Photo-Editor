@@ -973,6 +973,12 @@ export class DemoBackend implements EditorApi {
     return cloneDocument(project.doc);
   }
 
+  async updateLayerParamsMeta(req: UpdateLayerParamsRequest): Promise<DocumentState> {
+    const state = await this.updateLayerParams(req);
+    // Mirror the desktop contract: envelope only, no per-layer payload.
+    return { ...state, layers: [] };
+  }
+
   async commitChanges(req: CommitChangesRequest): Promise<DocumentState> {
     await delay(24);
     const project = this.requireProject(req.projectId);

@@ -439,6 +439,28 @@ impl AppService {
         &self,
         request: UpdateLayerParamsRequest,
     ) -> Result<DocumentState, ApiError> {
+        self.write_layer_params(request, true)
+    }
+
+    /// Same write as [`Self::update_layer_params`], but the response carries an
+    /// empty `layers` array.
+    ///
+    /// Interactive drags only merge `revision` / history metadata; echoing every
+    /// layer with its mask strokes and retouch points over IPC on each ~70 ms
+    /// tick is pure overhead. Callers that apply the returned document must stay
+    /// on the full variant.
+    pub fn update_layer_params_meta(
+        &self,
+        request: UpdateLayerParamsRequest,
+    ) -> Result<DocumentState, ApiError> {
+        self.write_layer_params(request, false)
+    }
+
+    fn write_layer_params(
+        &self,
+        request: UpdateLayerParamsRequest,
+        include_layers: bool,
+    ) -> Result<DocumentState, ApiError> {
         let project_id = parse_uuid(&request.project_id, "project")?;
         let layer_id = parse_uuid(&request.layer_id, "layer")?;
         if request.color.is_none() && request.portrait.is_none() && request.retouch.is_none() {
@@ -492,7 +514,11 @@ impl AppService {
             });
             // Deliberately no history entry and no autosave: sliders call this
             // continuously, then `commit_changes` once.
-            Ok(self.document_state(project_id, &project.session))
+            Ok(if include_layers {
+                self.document_state(project_id, &project.session)
+            } else {
+                self.document_meta(project_id, &project.session)
+            })
         })
     }
 

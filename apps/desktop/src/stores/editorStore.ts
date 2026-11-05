@@ -122,7 +122,16 @@ export interface ImportBatchState {
   currentName: string;
 }
 
-export const FREEZE_GRID_COLS = 16;
+export /**
+ * Longest edge used while a slider is dragged. 900px keeps a full-frame portrait
+ * responsive on CPU while still looking sharp at fit-to-window zoom; the
+ * configured size (1200/1600/2048) is restored as soon as the drag settles.
+ */
+const INTERACTIVE_PREVIEW_MAX = 900;
+/** Quiet period after the last live edit before the full-size render starts. */
+const INTERACTIVE_SETTLE_MS = 420;
+
+const FREEZE_GRID_COLS = 16;
 export const FREEZE_GRID_ROWS = 16;
 export const FREEZE_GRID_CELLS = FREEZE_GRID_COLS * FREEZE_GRID_ROWS;
 
@@ -396,6 +405,13 @@ export const useEditorStore = create<EditorState>()((set, get) => {
   let previewRunning = false;
   let previewDirty = false;
   let previewEpoch = 0;
+  /**
+   * True while a slider drag is being previewed. The canvas renders a smaller
+   * proxy during the drag and always returns to the configured size afterwards,
+   * including when the drag ends without a commit.
+   */
+  let interactivePreview = false;
+  let interactiveTimer: ReturnType<typeof setTimeout> | null = null;
   let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 
   let pendingParams = new Map<string, ParamQueueItem>();
@@ -550,6 +566,31 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     }, delay);
   }
 
+  /**
+   * A live edit started. Previews drop to the interactive tier so the canvas can
+   * follow the pointer; a settle timer guarantees the full-size render even when
+   * no commit follows (for example a drag that ends on the same value).
+   */
+  function noteInteractiveEdit(): void {
+    interactivePreview = true;
+    if (interactiveTimer !== null) clearTimeout(interactiveTimer);
+    interactiveTimer = setTimeout(() => {
+      interactiveTimer = null;
+      if (!interactivePreview) return;
+      interactivePreview = false;
+      schedulePreview(30);
+    }, INTERACTIVE_SETTLE_MS);
+  }
+
+  /** Leave the interactive tier immediately, e.g. when an edit is committed. */
+  function endInteractivePreview(): void {
+    if (interactiveTimer !== null) {
+      clearTimeout(interactiveTimer);
+      interactiveTimer = null;
+    }
+    interactivePreview = false;
+  }
+
   async function runPreview(epoch: number): Promise<void> {
     const api = get().api;
     const doc = get().doc;
@@ -563,9 +604,12 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     const projectId = doc.id;
     const requestRevision = doc.revision;
     try {
+      const settings = useSettingsStore.getState();
       const result = await api.renderPreview({
         projectId,
-        maxDimension: useSettingsStore.getState().previewMaxDimension,
+        maxDimension: interactivePreview
+          ? Math.min(settings.previewMaxDimension, INTERACTIVE_PREVIEW_MAX)
+          : settings.previewMaxDimension,
         ignoreCrop: get().previewFullFrame,
       });
       const current = get().doc;
@@ -642,7 +686,9 @@ export const useEditorStore = create<EditorState>()((set, get) => {
           if (!doc || doc.id !== item.projectId) continue;
           const layerId = key.slice(key.indexOf(":") + 1);
           try {
-            const next = await api.updateLayerParams({
+            // Drag path: only the envelope is merged here, so the full document
+            // (every mask and retouch point) must not travel back over IPC.
+            const next = await api.updateLayerParamsMeta({
               projectId: item.projectId,
               layerId,
               ...(item.color ? { color: item.color } : {}),
@@ -711,6 +757,9 @@ export const useEditorStore = create<EditorState>()((set, get) => {
    * this, queued slider changes are dropped when the document id changes.
    */
   async function settlePendingEdits(): Promise<boolean> {
+    // A commit is about to run (leaving the project or closing the window), so
+    // never keep the canvas on the interactive tier.
+    endInteractivePreview();
     // Always commit, even with an empty queue: a drag whose updateLayerParams
     // already reached the backend is still uncommitted and therefore unsaved.
     // The backend skips the write when nothing changed, so this is cheap.
@@ -847,6 +896,8 @@ export const useEditorStore = create<EditorState>()((set, get) => {
   }
 
   async function finishEdit(label: string): Promise<void> {
+    // The drag is over: the commit below requests the full-size preview.
+    endInteractivePreview();
     if (colorCreation) {
       try {
         await colorCreation;
@@ -881,6 +932,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
   }
 
   function activateDocument(next: DocumentState): void {
+    endInteractivePreview();
     set((state) => {
       // LUT names are session-only. Keep only the ids the new document still
       // references so importing many LUTs across projects cannot grow forever.
@@ -2981,6 +3033,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       patchLocalLayer(layerId, (item) => ({ ...item, portrait: { ...params } }));
       queueParams(layerId, { portrait: { ...params } });
       markSaving();
+      noteInteractiveEdit();
       schedulePreview(130);
     },
 
@@ -3034,6 +3087,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       patchLocalLayer(layerId, (item) => ({ ...item, color: { ...params } }));
       queueParams(layerId, { color: { ...params } });
       markSaving();
+      noteInteractiveEdit();
       schedulePreview(130);
     },
 

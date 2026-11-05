@@ -489,54 +489,78 @@ impl AppService {
         project_id: Uuid,
         session: &DocumentSession,
     ) -> DocumentState {
+        self.build_document_state(project_id, session, true)
+    }
+
+    /// Envelope without the per-layer payload, for interactive parameter writes.
+    /// The heavy part of `DocumentState` is each layer's mask and retouch data;
+    /// a slider tick only consumes revision and history metadata.
+    pub(crate) fn document_meta(
+        &self,
+        project_id: Uuid,
+        session: &DocumentSession,
+    ) -> DocumentState {
+        self.build_document_state(project_id, session, false)
+    }
+
+    fn build_document_state(
+        &self,
+        project_id: Uuid,
+        session: &DocumentSession,
+        include_layers: bool,
+    ) -> DocumentState {
         let document = session.document();
         let source = document
             .source
             .as_ref()
             .map(|asset| self.source_state(project_id, asset));
-        let layers = document
-            .layers
-            .iter()
-            .map(|layer| {
-                let preview_path = match layer.kind {
-                    LayerKind::Base => document.source.as_ref().map(|asset| {
-                        self.assets.source_preview_path(
-                            project_id,
-                            asset.asset_id,
-                            SOURCE_PREVIEW_MAX,
-                        )
-                    }),
-                    LayerKind::AiResult => layer.asset_id.map(|asset_id| {
-                        self.assets
-                            .ai_preview_path(project_id, asset_id, SOURCE_PREVIEW_MAX)
-                    }),
-                    _ => None,
-                }
-                .filter(|path| path.exists())
-                .map(|path| path.to_string_lossy().to_string());
-                LayerState {
-                    id: layer.id.to_string(),
-                    name: layer.name.clone(),
-                    kind: layer_kind_label(layer.kind).to_string(),
-                    visible: layer.visible,
-                    locked: layer.locked,
-                    opacity: layer.opacity,
-                    blend_mode: blend_label(layer.blend_mode).to_string(),
-                    color: layer.color,
-                    portrait: layer.portrait,
-                    retouch: layer.retouch.clone(),
-                    mask: layer.mask.clone(),
-                    // Only AI result layers expose an asset id in the contract.
-                    asset_id: if layer.kind == LayerKind::AiResult {
-                        layer.asset_id.map(|id| id.to_string())
-                    } else {
-                        None
-                    },
-                    preview_path,
-                    created_at: layer.created_at.clone(),
-                }
-            })
-            .collect();
+        let layers = if include_layers {
+            document
+                .layers
+                .iter()
+                .map(|layer| {
+                    let preview_path = match layer.kind {
+                        LayerKind::Base => document.source.as_ref().map(|asset| {
+                            self.assets.source_preview_path(
+                                project_id,
+                                asset.asset_id,
+                                SOURCE_PREVIEW_MAX,
+                            )
+                        }),
+                        LayerKind::AiResult => layer.asset_id.map(|asset_id| {
+                            self.assets
+                                .ai_preview_path(project_id, asset_id, SOURCE_PREVIEW_MAX)
+                        }),
+                        _ => None,
+                    }
+                    .filter(|path| path.exists())
+                    .map(|path| path.to_string_lossy().to_string());
+                    LayerState {
+                        id: layer.id.to_string(),
+                        name: layer.name.clone(),
+                        kind: layer_kind_label(layer.kind).to_string(),
+                        visible: layer.visible,
+                        locked: layer.locked,
+                        opacity: layer.opacity,
+                        blend_mode: blend_label(layer.blend_mode).to_string(),
+                        color: layer.color,
+                        portrait: layer.portrait,
+                        retouch: layer.retouch.clone(),
+                        mask: layer.mask.clone(),
+                        // Only AI result layers expose an asset id in the contract.
+                        asset_id: if layer.kind == LayerKind::AiResult {
+                            layer.asset_id.map(|id| id.to_string())
+                        } else {
+                            None
+                        },
+                        preview_path,
+                        created_at: layer.created_at.clone(),
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         DocumentState {
             id: document.id.to_string(),
             name: document.name.clone(),
