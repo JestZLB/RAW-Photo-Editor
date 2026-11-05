@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Download,
   FolderOpen,
+  History,
   Image as ImageIcon,
   Images,
   Palette,
@@ -129,6 +130,7 @@ export function MenuBar() {
   const openNewProject = useEditorStore((state) => state.openNewProject);
   const openExport = useEditorStore((state) => state.openExport);
   const openSettings = useEditorStore((state) => state.openSettings);
+  const openVersions = useEditorStore((state) => state.openVersions);
   const exportSelectedProjects = useEditorStore((state) => state.exportSelectedProjects);
   const syncAdjustmentsBusy = useEditorStore((state) => state.syncAdjustmentsBusy);
   const syncColorAdjustmentsToSelection = useEditorStore(
@@ -206,6 +208,19 @@ export function MenuBar() {
             <FolderOpen size={14} aria-hidden="true" />
             <span>导入照片（可多选）…</span>
             <kbd>{mac ? "⌘O" : "Ctrl+O"}</kbd>
+          </button>
+          <div className="menu-pop__divider" role="separator" />
+          <p className="menu-pop__label">版本</p>
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-item"
+            disabled={!doc}
+            title="保存命名快照；重开项目后仍可恢复"
+            onClick={() => act(openVersions)}
+          >
+            <History size={14} aria-hidden="true" />
+            <span>版本快照…</span>
           </button>
           <div className="menu-pop__divider" role="separator" />
           <p className="menu-pop__label">导出</p>

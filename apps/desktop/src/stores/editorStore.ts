@@ -33,6 +33,7 @@ import type {
   ProviderInfo,
   ProviderTestResult,
   ColorParams,
+  VersionSummary,
 } from "../api/types";
 import {
   FULL_CROP,
@@ -238,6 +239,10 @@ export interface EditorState {
   syncAdjustmentsBusy: boolean;
   newProjectOpen: boolean;
   newProjectBusy: boolean;
+  /** Named snapshots of the open project, newest first. */
+  versions: VersionSummary[];
+  versionsOpen: boolean;
+  versionsBusy: boolean;
 
   bootstrap: () => Promise<void>;
   refreshRecent: () => Promise<void>;
@@ -262,6 +267,15 @@ export interface EditorState {
   renameCollection: (collectionId: string, name: string) => Promise<boolean>;
   deleteProject: (projectId: string) => Promise<boolean>;
   clearRenderCache: () => Promise<{ deletedFiles: number; freedBytes: number } | null>;
+
+  /** Open the versions dialog and load the snapshot list. */
+  openVersions: () => Promise<void>;
+  closeVersions: () => void;
+  /** Capture the current document as a named snapshot. */
+  createVersion: (name: string) => Promise<boolean>;
+  /** Restore a snapshot; the restore itself becomes one undo step. */
+  restoreVersion: (versionId: string) => Promise<void>;
+  deleteVersion: (versionId: string) => Promise<void>;
 
   setTool: (tool: ToolId) => void;
   setCropDraft: (draft: CropDraft) => void;
@@ -1025,6 +1039,10 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         lutAssets,
         projectSelection:
           state.doc?.collectionId === next.collectionId ? state.projectSelection : [],
+        // Snapshots belong to the project that captured them.
+        versions: [],
+        versionsOpen: false,
+        versionsBusy: false,
       };
     });
     schedulePreview(20);
@@ -1095,6 +1113,9 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     syncAdjustmentsBusy: false,
     newProjectOpen: false,
     newProjectBusy: false,
+    versions: [],
+    versionsOpen: false,
+    versionsBusy: false,
 
     bootstrap: async () => {
       if (bootstrapPromise) return bootstrapPromise;
@@ -1238,10 +1259,96 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     },
 
     openNewProject: () =>
-      set({ newProjectOpen: true, exportOpen: false, settingsOpen: false }),
+      set({
+        newProjectOpen: true,
+        exportOpen: false,
+        settingsOpen: false,
+        versionsOpen: false,
+      }),
 
     closeNewProject: () => {
       if (!get().newProjectBusy) set({ newProjectOpen: false });
+    },
+
+    openVersions: async () => {
+      const api = get().api;
+      const doc = get().doc;
+      if (!api || !doc) return;
+      set({
+        versionsOpen: true,
+        versionsBusy: true,
+        exportOpen: false,
+        settingsOpen: false,
+      });
+      try {
+        const versions = await api.listVersions({ projectId: doc.id });
+        if (isCurrentProject(doc.id)) set({ versions });
+      } catch (error) {
+        errorToast(error, "版本列表没有加载出来，请稍后重试。");
+      } finally {
+        set({ versionsBusy: false });
+      }
+    },
+
+    closeVersions: () => {
+      if (!get().versionsBusy) set({ versionsOpen: false });
+    },
+
+    createVersion: async (name) => {
+      const api = get().api;
+      const doc = get().doc;
+      const label = name.trim();
+      if (!api || !doc || !label) return false;
+      set({ versionsBusy: true });
+      try {
+        const versions = await api.createVersion({ projectId: doc.id, name: label });
+        if (isCurrentProject(doc.id)) set({ versions });
+        toastSuccess(`已保存版本「${label}」，重新打开项目后仍可恢复。`);
+        return true;
+      } catch (error) {
+        errorToast(error, "版本没有保存成功，请重试。");
+        return false;
+      } finally {
+        set({ versionsBusy: false });
+      }
+    },
+
+    restoreVersion: async (versionId) => {
+      const api = get().api;
+      const doc = get().doc;
+      if (!api || !doc) return;
+      // Apply queued slider edits first: otherwise the restore would be based on
+      // a document that still has uncommitted parameters, and "undo" would return
+      // to that half-applied state.
+      await flushSync();
+      set({ versionsBusy: true });
+      try {
+        const next = await api.restoreVersion({ projectId: doc.id, versionId });
+        if (isCurrentProject(doc.id)) {
+          applyDocument(next);
+          schedulePreview(40);
+          toastSuccess("已恢复这个版本，可用撤销回到恢复前的状态。");
+        }
+      } catch (error) {
+        errorToast(error, "这个版本没有恢复成功，请重试。");
+      } finally {
+        set({ versionsBusy: false });
+      }
+    },
+
+    deleteVersion: async (versionId) => {
+      const api = get().api;
+      const doc = get().doc;
+      if (!api || !doc) return;
+      set({ versionsBusy: true });
+      try {
+        const versions = await api.deleteVersion({ projectId: doc.id, versionId });
+        if (isCurrentProject(doc.id)) set({ versions });
+      } catch (error) {
+        errorToast(error, "删除版本失败，请重试。");
+      } finally {
+        set({ versionsBusy: false });
+      }
     },
 
     createEmptyProject: async (name) => {
@@ -2692,9 +2799,9 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     setFitPercent: (percent) => {
       if (Math.abs(get().fitPercent - percent) > 0.0005) set({ fitPercent: percent });
     },
-    openExport: () => set({ exportOpen: true, settingsOpen: false }),
+    openExport: () => set({ exportOpen: true, settingsOpen: false, versionsOpen: false }),
     closeExport: () => set({ exportOpen: false }),
-    openSettings: () => set({ settingsOpen: true, exportOpen: false }),
+    openSettings: () => set({ settingsOpen: true, exportOpen: false, versionsOpen: false }),
     closeSettings: () => set({ settingsOpen: false }),
     refreshPreview: () => schedulePreview(0),
 

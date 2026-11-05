@@ -35,6 +35,7 @@ import type {
   ColorParams,
   CommitChangesRequest,
   CreateProjectRequest,
+  CreateVersionRequest,
   CropState,
   DeleteLayerRequest,
   DocumentState,
@@ -77,6 +78,8 @@ import type {
   SetLayerMaskRequest,
   SyncColorAdjustmentsRequest,
   SyncColorAdjustmentsResult,
+  VersionIdRequest,
+  VersionSummary,
   WhiteBalanceResult,
 } from "./types";
 
@@ -93,6 +96,11 @@ interface HistoryEntry extends HistorySnapshot {
   label: string;
 }
 
+interface DemoVersion {
+  summary: VersionSummary;
+  snapshot: DocumentState;
+}
+
 interface DemoProject {
   doc: DocumentState;
   /** Original pixels as a data URL: exports must stay full resolution. */
@@ -100,6 +108,8 @@ interface DemoProject {
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
   lastCommitted: HistorySnapshot;
+  /** Named snapshots, newest first; the browser demo keeps them in memory. */
+  versions: DemoVersion[];
 }
 
 const BLEND_TO_COMPOSITE: Record<BlendMode, GlobalCompositeOperation> = {
@@ -979,6 +989,65 @@ export class DemoBackend implements EditorApi {
     return { ...state, layers: [] };
   }
 
+  async listVersions(req: ProjectRef): Promise<VersionSummary[]> {
+    const project = this.requireProject(req.projectId);
+    return project.versions.map((item) => ({ ...item.summary }));
+  }
+
+  async createVersion(req: CreateVersionRequest): Promise<VersionSummary[]> {
+    await delay(18);
+    const project = this.requireProject(req.projectId);
+    const name = req.name.trim();
+    if (!name) {
+      throw apiError("INVALID_ARGUMENT", "Version name is empty", "请先输入版本名称。");
+    }
+    if (name.length > 60) {
+      throw apiError("INVALID_ARGUMENT", "Version name is too long", "版本名称最多 60 个字符。");
+    }
+    project.versions.unshift({
+      summary: {
+        id: uid("version"),
+        name,
+        revision: project.doc.revision,
+        createdAt: nowIso(),
+        thumbnailPath: project.doc.source?.previewPath ?? null,
+      },
+      snapshot: cloneDocument(project.doc),
+    });
+    return this.listVersions({ projectId: req.projectId });
+  }
+
+  async restoreVersion(req: VersionIdRequest): Promise<DocumentState> {
+    await delay(24);
+    const project = this.requireProject(req.projectId);
+    const entry = project.versions.find((item) => item.summary.id === req.versionId);
+    if (!entry) {
+      throw apiError(
+        "VERSION_NOT_FOUND",
+        "Version not found",
+        "这个版本已经不存在，请刷新列表。",
+      );
+    }
+    // Same shape as the desktop: the previous state becomes one undo step.
+    this.pushHistory(project, `恢复版本：${entry.summary.name}`);
+    project.doc.layers = cloneLayers(entry.snapshot.layers);
+    project.doc.crop = { ...entry.snapshot.crop };
+    project.doc.revision = Math.max(project.doc.revision, entry.snapshot.revision) + 1;
+    project.doc.updatedAt = nowIso();
+    project.lastCommitted = {
+      layers: cloneLayers(project.doc.layers),
+      crop: { ...project.doc.crop },
+    };
+    return cloneDocument(project.doc);
+  }
+
+  async deleteVersion(req: VersionIdRequest): Promise<VersionSummary[]> {
+    await delay(12);
+    const project = this.requireProject(req.projectId);
+    project.versions = project.versions.filter((item) => item.summary.id !== req.versionId);
+    return this.listVersions({ projectId: req.projectId });
+  }
+
   async commitChanges(req: CommitChangesRequest): Promise<DocumentState> {
     await delay(24);
     const project = this.requireProject(req.projectId);
@@ -1787,6 +1856,7 @@ export class DemoBackend implements EditorApi {
       undoStack: [],
       redoStack: [],
       lastCommitted: { layers: cloneLayers(doc.layers), crop: { ...doc.crop } },
+      versions: [],
     });
     this.remember(
       this.imageCache,
