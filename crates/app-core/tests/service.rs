@@ -191,6 +191,58 @@ fn render_preview_uses_revision_cache_and_proxy_dimensions() {
     );
 }
 
+/// The drag path must not echo the layer payload: masks and retouch points are
+/// the heavy part of a document, and the caller only merges revision/history
+/// from this response.
+#[test]
+fn meta_update_returns_the_envelope_without_layers() {
+    let app = TestApp::new();
+    let state = import(&app);
+    let state = app
+        .service
+        .add_layer(AddLayerRequest {
+            project_id: state.id.clone(),
+            kind: AddLayerKind::Color,
+            name: None,
+            portrait: None,
+            mask: None,
+        })
+        .unwrap();
+    let layer_id = state.layers.last().unwrap().id.clone();
+
+    let meta = app
+        .service
+        .update_layer_params_meta(UpdateLayerParamsRequest {
+            project_id: state.id.clone(),
+            layer_id,
+            color: Some(ColorParams {
+                exposure: 0.5,
+                ..Default::default()
+            }),
+            portrait: None,
+            retouch: None,
+        })
+        .unwrap();
+
+    assert!(
+        meta.layers.is_empty(),
+        "meta responses must not carry the layer payload"
+    );
+    assert_eq!(meta.revision, state.revision + 1);
+
+    // The write itself still landed: reopening shows the new exposure.
+    let reopened = app
+        .service
+        .open_project(OpenProjectRequest {
+            project_id: state.id.clone(),
+        })
+        .unwrap();
+    assert_eq!(
+        reopened.layers.last().unwrap().color.unwrap().exposure,
+        0.5
+    );
+}
+
 #[test]
 fn slider_params_commit_once_and_undo_redo_are_monotonic() {
     let app = TestApp::new();

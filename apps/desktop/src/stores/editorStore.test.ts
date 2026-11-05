@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EditorApi } from "../api/client";
 import { apiError } from "../api/errors";
@@ -460,6 +460,7 @@ describe("photo-hq cancellation", () => {
     expect(useToastStore.getState().toasts.at(-1)?.title).toBe("已取消");
   });
 });
+
 
 describe("empty photo set creation", () => {
   it("creates and opens a set without a photo", async () => {

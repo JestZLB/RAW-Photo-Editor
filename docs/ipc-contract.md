@@ -339,6 +339,7 @@ interface DocumentState {
 | `import_lut` | `{ projectId: string; path?: string; fileName?: string; dataBase64?: string }` | `LutAssetResult`（校验并托管 `.cube`，不修改文档；`path` 用于桌面版，`dataBase64` 用于演示模式） |
 | `render_preview` | `{ projectId: string; maxDimension?: number }` | `PreviewResult` |
 | `update_layer_params` | `{ projectId: string; layerId: string; color?: ColorParams; portrait?: PortraitParams }` | `DocumentState`（不提交历史） |
+| `update_layer_params_meta` | 同 `update_layer_params` | `DocumentState`（`layers` 恒为空数组，只用于合并 `revision` / 历史；拖动中每 ~70ms 的高频写入走这里，避免整份蒙版与修复点在 IPC 上往返） |
 | `commit_changes` | `{ projectId: string; label: string }` | `DocumentState`（将本次连续修改合并为一条历史） |
 | `set_layer_mask` | `{ projectId: string; layerId: string; mask: LayerMask \| null }` | `DocumentState`（仅调色/人像图层；含画笔、自动肤色、渐变、反转、羽化与密度；每次调用提交一条历史） |
 | `pick_white_balance` | `{ projectId: string; x: number; y: number }` | `WhiteBalanceResult`（x/y 为原始源图归一化坐标，只读采样，不修改文档） |
@@ -585,6 +586,7 @@ Mock Provider 完全本地执行，不上传图片；OpenAI 兼容 Provider 仅�
 - `update_layer_params` 只改内存文档；`commit_changes` 才生成一条撤销记录并触发自动保存。滑块拖动必须使用该组合。
 - `update_layer` 中仅含 `opacity` 的补丁同样是为拖动服务，不生成历史；前端松开滑块后调用 `commit_changes`。可见性/混合模式等离散补丁立即生成一条历史。
 - `render_preview.maxDimension` 由前端设置页决定（1200/1600/2048），后端上限 8192；缓存键包含 revision 与该尺寸。
+- 拖动滑块时前端请求 900px 的交互档位，静止约 420ms 后自动回到设置档位；两档写入各自的缓存键，最终像素与导出不受影响。`update_layer_params_meta` 的响应不可当作文档使用。
 - 图层顺序即渲染顺序；base 图层不可删除、不可调整参数。`duplicate_layer` 复制除 base 外的任意图层，参数与蒙版一并复制，副本默认解锁。
 - 跨照片复用参数由前端完成：只复制调色或人像参数，不携带蒙版、裁剪、五官几何或 AI 资产；粘贴时按当前照片重新解析几何，为对应调整图层创建/复用并提交历史。`bodyMode` 跟随目标图层，不会因粘贴把人像层意外切成身体层。
 - 不支持 AI 人脸分析时，`analyze_portrait` 与 `analyze_portrait_regions` 返回 `available: false` 与警告，不得报 500。

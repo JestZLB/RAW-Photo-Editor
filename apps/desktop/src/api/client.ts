@@ -76,6 +76,13 @@ export interface EditorApi {
 
   renderPreview(req: RenderPreviewRequest): Promise<PreviewResult>;
   updateLayerParams(req: UpdateLayerParamsRequest): Promise<DocumentState>;
+  /**
+   * Same write as `updateLayerParams`, but the response carries an empty
+   * `layers` array. Only revision / history are usable — do not apply it as a
+   * document. Intended for interactive drags that would otherwise move every
+   * mask and retouch point over IPC on each tick.
+   */
+  updateLayerParamsMeta(req: UpdateLayerParamsRequest): Promise<DocumentState>;
   commitChanges(req: CommitChangesRequest): Promise<DocumentState>;
   setLayerMask(req: SetLayerMaskRequest): Promise<DocumentState>;
   autoTone(req: ProjectRef): Promise<AutoToneResult>;

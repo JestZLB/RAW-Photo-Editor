@@ -35,6 +35,19 @@ pub async fn update_layer_params(
         .map_err(join_error)?
 }
 
+/// Interactive drag path: returns the document envelope without the per-layer
+/// payload, which the caller does not merge.
+#[tauri::command]
+pub async fn update_layer_params_meta(
+    state: State<'_, AppState>,
+    req: UpdateLayerParamsRequest,
+) -> Result<DocumentState, ApiError> {
+    let service = state.service.clone();
+    tauri::async_runtime::spawn_blocking(move || service.update_layer_params_meta(req))
+        .await
+        .map_err(join_error)?
+}
+
 #[tauri::command]
 pub async fn set_layer_mask(
     state: State<'_, AppState>,

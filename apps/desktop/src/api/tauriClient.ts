@@ -110,6 +110,8 @@ export function createTauriClient(): EditorApi {
     renderPreview: (req: RenderPreviewRequest) => call<PreviewResult>("render_preview", req),
     updateLayerParams: (req: UpdateLayerParamsRequest) =>
       call<DocumentState>("update_layer_params", req),
+    updateLayerParamsMeta: (req: UpdateLayerParamsRequest) =>
+      call<DocumentState>("update_layer_params_meta", req),
     commitChanges: (req: CommitChangesRequest) => call<DocumentState>("commit_changes", req),
     setLayerMask: (req: SetLayerMaskRequest) => call<DocumentState>("set_layer_mask", req),
     autoTone: (req: ProjectRef) => call<AutoToneResult>("auto_tone", req),

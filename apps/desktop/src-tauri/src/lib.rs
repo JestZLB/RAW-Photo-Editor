@@ -54,6 +54,7 @@ pub fn run() {
             commands::import_lut,
             commands::render_preview,
             commands::update_layer_params,
+            commands::update_layer_params_meta,
             commands::commit_changes,
             commands::set_layer_mask,
             commands::pick_white_balance,
