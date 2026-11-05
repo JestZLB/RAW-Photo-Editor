@@ -2,6 +2,8 @@
 
 基于 [架构基线](docs/architecture-v4.html) 实现的 Windows-first 桌面人像修图工程：Tauri 2 + React 19 + TypeScript + Vite 前端，Rust 领域库与 CPU 图像管线，SQLite 持久化，可插拔云端 AI Provider。
 
+![Luma Studio 编辑界面](screenshots/editor.png)
+
 当前状态是**可运行的架构基线**，不是完成品。所有未接入的模型与后端都会在界面和文档中如实标注，不会伪装成已实现能力。
 
 ## 快速开始
