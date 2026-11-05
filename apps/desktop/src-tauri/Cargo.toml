@@ -1,0 +1,22 @@
+[package]
+name = "luma-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Luma Portrait desktop shell"
+
+[lib]
+name = "luma_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "luma-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+app-core = { path = "../../../crates/app-core" }
+tauri = { workspace = true, features = ["protocol-asset"] }
+tauri-plugin-dialog = { workspace = true }

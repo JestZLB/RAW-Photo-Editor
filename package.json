@@ -1,0 +1,19 @@
+{
+  "name": "luma-photo-editor",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "bun@1.3.14",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "cd apps/desktop && bun run dev",
+    "build": "cd apps/desktop && bun run build",
+    "typecheck": "cd apps/desktop && bun run typecheck",
+    "test:web": "cd apps/desktop && bun run test",
+    "tauri": "cd apps/desktop && bun run tauri",
+    "check:rust": "cargo check --workspace",
+    "test:rust": "cargo test --workspace",
+    "check": "bun run typecheck && cargo check --workspace"
+  }
+}

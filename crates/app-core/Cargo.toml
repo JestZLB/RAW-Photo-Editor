@@ -1,0 +1,28 @@
+[package]
+name = "app-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ai-denoise = { path = "../ai-denoise" }
+document = { path = "../document" }
+image-core = { path = "../image-core" }
+color-pipeline = { path = "../color-pipeline" }
+portrait-engine = { path = "../portrait-engine" }
+render-engine = { path = "../render-engine" }
+raw-develop = { path = "../raw-develop" }
+persistence = { path = "../persistence" }
+task-runtime = { path = "../task-runtime" }
+ai-provider = { path = "../ai-provider" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+base64 = { workspace = true }
+tempfile = { workspace = true }
+
+[dev-dependencies]
+ai-denoise = { path = "../ai-denoise" }

@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/desktop/src-tauri",
+  "crates/app-core",
+  "crates/document",
+  "crates/image-core",
+  "crates/color-pipeline",
+  "crates/raw-develop",
+  "crates/portrait-engine",
+  "crates/render-engine",
+  "crates/ai-provider",
+  "crates/persistence",
+  "crates/task-runtime",
+  "crates/ai-denoise",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "tiff", "webp"] }
+rayon = "1.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net"] }
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+base64 = "0.22"
+sha2 = "0.10"
+tempfile = "3"
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+keyring = { version = "3", features = ["windows-native"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
