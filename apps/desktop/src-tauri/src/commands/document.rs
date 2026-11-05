@@ -26,8 +26,13 @@ pub async fn update_layer_params(
     state: State<'_, AppState>,
     req: UpdateLayerParamsRequest,
 ) -> Result<DocumentState, ApiError> {
-    // In-memory only: no autosave/history until `commit_changes`.
-    state.service.update_layer_params(req)
+    // In-memory only: no autosave/history until `commit_changes`. This still
+    // runs on the blocking pool: it clones and serialises the whole document,
+    // and sliders call it every ~70 ms while dragging.
+    let service = state.service.clone();
+    tauri::async_runtime::spawn_blocking(move || service.update_layer_params(req))
+        .await
+        .map_err(join_error)?
 }
 
 #[tauri::command]
