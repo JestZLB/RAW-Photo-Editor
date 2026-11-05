@@ -31,6 +31,25 @@ export interface ProjectSummary {
   thumbnailPath: string | null;
 }
 
+/** A named snapshot of a project document; survives restarts, unlike undo. */
+export interface VersionSummary {
+  id: string;
+  name: string;
+  revision: number;
+  createdAt: string;
+  thumbnailPath: string | null;
+}
+
+export interface CreateVersionRequest {
+  projectId: string;
+  name: string;
+}
+
+export interface VersionIdRequest {
+  projectId: string;
+  versionId: string;
+}
+
 export interface CollectionSummary {
   id: string;
   name: string;

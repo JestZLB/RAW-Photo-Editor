@@ -17,6 +17,7 @@ import type {
   CollectionSummary,
   CommitChangesRequest,
   CreateProjectRequest,
+  CreateVersionRequest,
   DeleteLayerRequest,
   DocumentState,
   DuplicateLayerRequest,
@@ -52,6 +53,8 @@ import type {
   SyncColorAdjustmentsResult,
   UpdateLayerParamsRequest,
   UpdateLayerRequest,
+  VersionIdRequest,
+  VersionSummary,
   WhiteBalanceResult,
 } from "./types";
 
@@ -95,6 +98,11 @@ export function createTauriClient(): EditorApi {
     listCollections: () => call<CollectionSummary[]>("list_collections"),
     createProject: (req: CreateProjectRequest) => call<DocumentState>("create_project", req),
     openProject: (req: OpenProjectRequest) => call<DocumentState>("open_project", req),
+    listVersions: (req: ProjectRef) => call<VersionSummary[]>("list_versions", req),
+    createVersion: (req: CreateVersionRequest) => call<VersionSummary[]>("create_version", req),
+    restoreVersion: (req: VersionIdRequest) =>
+      call<DocumentState>("restore_version", req),
+    deleteVersion: (req: VersionIdRequest) => call<VersionSummary[]>("delete_version", req),
     renameProject: (req: RenameProjectRequest) =>
       call<ProjectSummary>("rename_project", req),
     renameCollection: (req) => call<void>("rename_collection", req),

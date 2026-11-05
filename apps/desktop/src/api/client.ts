@@ -15,6 +15,7 @@ import type {
   CollectionSummary,
   CommitChangesRequest,
   CreateProjectRequest,
+  CreateVersionRequest,
   DeleteLayerRequest,
   DocumentState,
   DuplicateLayerRequest,
@@ -50,6 +51,8 @@ import type {
   SyncColorAdjustmentsResult,
   UpdateLayerParamsRequest,
   UpdateLayerRequest,
+  VersionIdRequest,
+  VersionSummary,
   WhiteBalanceResult,
 } from "./types";
 
@@ -63,6 +66,12 @@ export interface EditorApi {
   listCollections(): Promise<CollectionSummary[]>;
   createProject(req: CreateProjectRequest): Promise<DocumentState>;
   openProject(req: OpenProjectRequest): Promise<DocumentState>;
+  /** Named snapshots, newest first. */
+  listVersions(req: ProjectRef): Promise<VersionSummary[]>;
+  createVersion(req: CreateVersionRequest): Promise<VersionSummary[]>;
+  /** Restores a snapshot as the live document; the restore itself is undoable. */
+  restoreVersion(req: VersionIdRequest): Promise<DocumentState>;
+  deleteVersion(req: VersionIdRequest): Promise<VersionSummary[]>;
   renameProject(req: RenameProjectRequest): Promise<ProjectSummary>;
   /** Rename every photo's photo set in one step (metadata only). */
   renameCollection(req: { collectionId: string; name: string }): Promise<void>;

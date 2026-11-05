@@ -14,6 +14,7 @@ import { Inspector } from "./components/Inspector";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { StatusBar } from "./components/StatusBar";
 import { ToastViewport } from "./components/controls/Toast";
+import { VersionsDialog } from "./components/VersionsDialog";
 import { ToolRail } from "./components/ToolRail";
 import { TopBar } from "./components/TopBar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
@@ -97,7 +98,7 @@ export default function App() {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.defaultPrevented) return;
       const store = useEditorStore.getState();
-      if (store.settingsOpen || store.exportOpen) return;
+      if (store.settingsOpen || store.exportOpen || store.versionsOpen) return;
       const shortcut = resolveModifierShortcut(event);
       if (shortcut) {
         if (isEditableTarget(event.target)) return;
@@ -334,6 +335,7 @@ export default function App() {
       <ExportDialog />
       <SettingsDialog />
       <NewProjectDialog />
+      <VersionsDialog />
       <ToastViewport />
       {dragActive ? (
         <div className="drop-overlay" role="status" aria-live="polite">
