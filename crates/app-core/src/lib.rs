@@ -19,19 +19,21 @@ pub use dto::{
     ExportImageFormat, ExportMetadata, ExportOptions, ExportProgress, ExportResult, Histogram,
     LayerState, LutAssetResult, PortraitAnalysisResult, PortraitFaceRegions, PortraitKeypoint,
     PortraitRegion, PortraitRegionsResult, PreviewResult, ProjectSummary, SourceAssetState,
-    SyncColorAdjustmentsResult, WatermarkOptions, WatermarkPosition, WhiteBalanceResult,
+    SyncColorAdjustmentsResult, VersionSummary, WatermarkOptions, WatermarkPosition,
+    WhiteBalanceResult,
 };
 pub use error::ApiError;
 pub use requests::{
     AddLayerKind, AddLayerRequest, AiCapabilityRequest, AiDenoiseRequest, ApplyAiResultRequest,
     CancelAiJobRequest, CancelExportRequest, CommitChangesRequest, CreateProjectRequest,
-    DeleteLayerRequest, DuplicateLayerRequest, ExportImageRequest, ImportLutRequest,
-    ImportPhotoBytesRequest, ImportPhotoRequest, ListAiJobsRequest, MoveLayerRequest,
-    OpenProjectRequest, PhotoHqDenoiseRequest, PickWhiteBalanceRequest, ProjectIdRequest,
-    ProviderIdRequest, RenameCollectionRequest, RenameProjectRequest, RenderPreviewRequest,
-    SaveProviderConfigRequest, SetCropRequest, SetLayerMaskRequest, SetProviderCredentialRequest,
-    SubmitAiJobRequest, SubmitAiJobResponse, SyncColorAdjustmentsRequest, TestProviderRequest,
-    UpdateLayerParamsRequest, UpdateLayerRequest,
+    CreateVersionRequest, DeleteLayerRequest, DuplicateLayerRequest, ExportImageRequest,
+    ImportLutRequest, ImportPhotoBytesRequest, ImportPhotoRequest, ListAiJobsRequest,
+    MoveLayerRequest, OpenProjectRequest, PhotoHqDenoiseRequest, PickWhiteBalanceRequest,
+    ProjectIdRequest, ProviderIdRequest, RenameCollectionRequest, RenameProjectRequest,
+    RenderPreviewRequest, SaveProviderConfigRequest, SetCropRequest, SetLayerMaskRequest,
+    SetProviderCredentialRequest, SubmitAiJobRequest, SubmitAiJobResponse,
+    SyncColorAdjustmentsRequest, TestProviderRequest, UpdateLayerParamsRequest, UpdateLayerRequest,
+    VersionIdRequest,
 };
 pub use service::{
     AppPaths, AppService, EventSink, NoopEventSink, DEFAULT_PREVIEW_MAX, MAX_IMPORT_BYTES,

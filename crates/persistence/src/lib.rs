@@ -11,5 +11,5 @@ pub use credentials::{
 };
 pub use db::{
     AiJobRecord, AssetRecord, Database, PersistenceError, ProjectRecord, ProjectSummaryRecord,
-    ProviderRecord,
+    ProviderRecord, VersionRecord, VersionSummaryRecord,
 };

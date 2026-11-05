@@ -141,6 +141,20 @@ pub struct DocumentState {
     pub history: Vec<String>,
 }
 
+/// A named snapshot of a project document.
+///
+/// The document payload stays in SQLite; the UI only needs identity, a label, a
+/// thumbnail and the revision it was captured at.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionSummary {
+    pub id: String,
+    pub name: String,
+    pub revision: u64,
+    pub created_at: String,
+    pub thumbnail_path: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheClearResult {
