@@ -16,7 +16,9 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true,
+    // `noUncheckedSideEffectImports` (TS 5.6+) is deliberately not enabled:
+    // editors that bundle an older TypeScript reject the whole config, and a
+    // mistyped side-effect import is already caught by the Vite build.
     "forceConsistentCasingInFileNames": true,
     "types": ["vite/client"]
   },
