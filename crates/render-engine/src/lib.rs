@@ -7,6 +7,7 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use color_pipeline::{apply_color_adjustments, apply_lut, Lut};
 use document::{
@@ -63,9 +64,56 @@ impl RenderError {
     }
 }
 
+/// Decoded coverage of a raster (segmentation) mask: one value per pixel in
+/// 0..1, row-major, spanning the uncropped source frame.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterCoverage {
+    pub width: u32,
+    pub height: u32,
+    pub values: Vec<f32>,
+}
+
+impl RasterCoverage {
+    pub fn from_values(width: u32, height: u32, values: Vec<f32>) -> Option<Self> {
+        if width == 0 || height == 0 || values.len() != width as usize * height as usize {
+            return None;
+        }
+        Some(Self {
+            width,
+            height,
+            values,
+        })
+    }
+
+    /// Bilinear sample at normalized coordinates, clamped at the edges. The
+    /// mask is authored against the source, so this ignores cropping.
+    pub fn sample(&self, u: f32, v: f32) -> f32 {
+        let max_x = self.width.saturating_sub(1) as f32;
+        let max_y = self.height.saturating_sub(1) as f32;
+        let x = u.clamp(0.0, 1.0) * max_x;
+        let y = v.clamp(0.0, 1.0) * max_y;
+        let x0 = x.floor() as usize;
+        let y0 = y.floor() as usize;
+        let x1 = (x0 + 1).min(self.width as usize - 1);
+        let y1 = (y0 + 1).min(self.height as usize - 1);
+        let tx = x - x0 as f32;
+        let ty = y - y0 as f32;
+        let stride = self.width as usize;
+        let at = |xi: usize, yi: usize| self.values[yi * stride + xi];
+        let top = at(x0, y0) * (1.0 - tx) + at(x1, y0) * tx;
+        let bottom = at(x0, y1) * (1.0 - tx) + at(x1, y1) * tx;
+        top * (1.0 - ty) + bottom * ty
+    }
+}
+
 pub trait AssetResolver: Send + Sync {
     fn load_ai_result(&self, asset_id: Uuid) -> Result<DecodedImage, RenderError>;
     fn load_lut(&self, asset_id: Uuid) -> Result<Lut, RenderError>;
+    /// Coverage of a raster mask asset. Defaults to "no coverage" so resolvers
+    /// without mask support (tests, demo) keep working.
+    fn load_raster_mask(&self, _asset_id: Uuid) -> Option<Arc<RasterCoverage>> {
+        None
+    }
 }
 
 fn smoothstep(edge0: f32, edge1: f32, value: f32) -> f32 {
@@ -122,6 +170,7 @@ fn rasterize_mask(
     source_height: u32,
     width: u32,
     height: u32,
+    raster: Option<&RasterCoverage>,
 ) -> Vec<f32> {
     let mut out = if mask.auto_skin && current.width == width && current.height == height {
         let skin = portrait_engine::skin_mask(current);
@@ -258,6 +307,36 @@ fn rasterize_mask(
                     continue;
                 }
                 let alpha = (1.0 - smoothstep(inner, 1.0, distance)) * region.strength;
+                let index = y as usize * width as usize + x as usize;
+                out[index] = out[index].max(alpha);
+            }
+        }
+    }
+    // Pixel coverage from a segmentation provider. Sampling happens on the
+    // full frame (mask coordinates are normalized to the source, like strokes),
+    // and combines with the vector sources by taking the maximum.
+    if let (Some(params), Some(coverage)) = (mask.raster.as_ref(), raster) {
+        let threshold = params.threshold.clamp(0.0, 1.0);
+        let softness = params.softness.clamp(0.0, 0.499);
+        let width_f = width as f32;
+        let height_f = height as f32;
+        for y in 0..height {
+            let v = (y as f32 + 0.5) / height_f;
+            for x in 0..width {
+                let u = (x as f32 + 0.5) / width_f;
+                let value = coverage.sample(u, v);
+                let alpha = if softness <= 0.0005 {
+                    if value >= threshold {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                } else {
+                    smoothstep(threshold - softness, threshold + softness, value)
+                };
+                if alpha <= 0.0 {
+                    continue;
+                }
                 let index = y as usize * width as usize + x as usize;
                 out[index] = out[index].max(alpha);
             }
@@ -413,6 +492,10 @@ pub fn render_document(
                     .as_ref()
                     .filter(|mask| !mask.is_empty())
                     .map(|mask| {
+                        let raster = mask
+                            .raster
+                            .as_ref()
+                            .and_then(|raster| resolver.load_raster_mask(raster.asset_id));
                         rasterize_mask(
                             mask,
                             &current,
@@ -420,6 +503,7 @@ pub fn render_document(
                             source.height,
                             processed.width,
                             processed.height,
+                            raster.as_deref(),
                         )
                     });
                 if let Some(mask) = mask {
@@ -460,6 +544,10 @@ pub fn render_document(
                     .as_ref()
                     .filter(|mask| !mask.is_empty())
                     .map(|mask| {
+                        let raster = mask
+                            .raster
+                            .as_ref()
+                            .and_then(|raster| resolver.load_raster_mask(raster.asset_id));
                         rasterize_mask(
                             mask,
                             &current,
@@ -467,6 +555,7 @@ pub fn render_document(
                             source.height,
                             current.width,
                             current.height,
+                            raster.as_deref(),
                         )
                     });
                 if layer_can_apply_in_place(layer) && coverage.is_none() {
@@ -671,6 +760,7 @@ fn apply_liquify_strokes(
             source_height,
             image.width,
             image.height,
+            None,
         )
     };
     if grid_active {
@@ -1015,6 +1105,7 @@ mod tests {
     struct StaticResolver {
         assets: HashMap<Uuid, DecodedImage>,
         luts: HashMap<Uuid, Lut>,
+        rasters: HashMap<Uuid, Arc<RasterCoverage>>,
     }
 
     impl AssetResolver for StaticResolver {
@@ -1035,6 +1126,10 @@ mod tests {
                     asset_id: asset_id.to_string(),
                     message: "lut asset is not registered".into(),
                 })
+        }
+
+        fn load_raster_mask(&self, asset_id: Uuid) -> Option<Arc<RasterCoverage>> {
+            self.rasters.get(&asset_id).cloned()
         }
     }
 
@@ -2118,5 +2213,103 @@ mod tests {
             boundary(&rendered, 22) > boundary(&reference, 22),
             "rows outside the protected cells still follow the stroke"
         );
+    }
+
+    #[test]
+    fn raster_coverage_samples_bilinearly_and_clamps() {
+        let coverage = RasterCoverage::from_values(2, 1, vec![0.0, 1.0]).unwrap();
+        assert_eq!(coverage.sample(0.0, 0.5), 0.0);
+        assert_eq!(coverage.sample(1.0, 0.5), 1.0);
+        assert!((coverage.sample(0.5, 0.5) - 0.5).abs() < 1e-6);
+        // Outside the mask clamps to the border instead of wrapping.
+        assert_eq!(coverage.sample(-3.0, 0.5), 0.0);
+        assert_eq!(coverage.sample(4.0, 0.5), 1.0);
+    }
+
+    #[test]
+    fn raster_mask_merges_into_coverage_and_respects_threshold() {
+        let asset = Uuid::new_v4();
+        let mask = LayerMask {
+            raster: Some(document::MaskRaster {
+                asset_id: asset,
+                threshold: 0.5,
+                softness: 0.0,
+                source: "test".into(),
+            }),
+            ..LayerMask::default()
+        };
+        let image = LinearImage::transparent(4, 4).unwrap();
+
+        let mut full = StaticResolver::default();
+        full.rasters.insert(
+            asset,
+            Arc::new(RasterCoverage::from_values(2, 2, vec![1.0; 4]).unwrap()),
+        );
+        let coverage = rasterize_mask(
+            &mask,
+            &image,
+            4,
+            4,
+            4,
+            4,
+            full.load_raster_mask(asset).as_deref(),
+        );
+        assert!(
+            coverage.iter().all(|value| (*value - 1.0).abs() < 1e-6),
+            "a fully selected raster covers the whole frame"
+        );
+
+        // No registered coverage: the raster contributes nothing, so the layer
+        // behaves as if it had no mask at all.
+        let empty = StaticResolver::default();
+        let coverage = rasterize_mask(
+            &mask,
+            &image,
+            4,
+            4,
+            4,
+            4,
+            empty.load_raster_mask(asset).as_deref(),
+        );
+        assert!(coverage.iter().all(|value| *value == 0.0));
+    }
+
+    #[test]
+    fn raster_mask_is_combined_with_brush_strokes_by_maximum() {
+        let asset = Uuid::new_v4();
+        // Brush covers the top-left pixel only; the raster covers the half.
+        let mask = LayerMask {
+            strokes: vec![MaskStroke {
+                points: vec![MaskPoint { x: 0.1, y: 0.1 }],
+                radius: 0.05,
+                feather: 0.2,
+                erase: false,
+            }],
+            raster: Some(document::MaskRaster {
+                asset_id: asset,
+                threshold: 0.5,
+                softness: 0.0,
+                source: "test".into(),
+            }),
+            ..LayerMask::default()
+        };
+        let image = LinearImage::transparent(4, 4).unwrap();
+        let mut resolver = StaticResolver::default();
+        resolver.rasters.insert(
+            asset,
+            Arc::new(RasterCoverage::from_values(2, 1, vec![0.0, 1.0]).unwrap()),
+        );
+        let coverage = rasterize_mask(
+            &mask,
+            &image,
+            4,
+            4,
+            4,
+            4,
+            resolver.load_raster_mask(asset).as_deref(),
+        );
+        // Brush keeps the left edge, raster keeps the right half.
+        assert!(coverage[0] > 0.0, "brush coverage must survive");
+        assert!(coverage[3] > 0.5, "raster coverage must be merged in");
     }
 }

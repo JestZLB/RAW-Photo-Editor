@@ -157,6 +157,12 @@ impl AssetStore {
             .join(format!("render-r{revision}-d{max_dimension}{suffix}.png"))
     }
 
+    /// Grayscale coverage written by an external mask provider (segmentation).
+    pub fn mask_asset_path(&self, project_id: Uuid, asset_id: Uuid) -> PathBuf {
+        self.assets_dir(project_id)
+            .join(format!("mask-{asset_id}.png"))
+    }
+
     /// Cached render of a named snapshot. Snapshots never change, so the file is
     /// valid for as long as the version row exists; `version-` keeps it out of
     /// the `render-*` rotation that prunes live previews.

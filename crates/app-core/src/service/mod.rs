@@ -52,6 +52,9 @@ const MAX_CACHED_LUTS: usize = 4;
 /// Histograms for already-rendered previews, keyed by cache path. Computing one
 /// on a cache hit means decoding the whole PNG again for 4×64 bins.
 const MAX_CACHED_HISTOGRAMS: usize = 16;
+/// Decoded raster masks kept for the lifetime of the service. A 1024px mask is
+/// 4 MB as f32; re-decoding one on every frame would dominate a slider drag.
+const MAX_CACHED_RASTER_MASKS: usize = 6;
 
 #[derive(Debug, Clone)]
 pub struct AppPaths {
@@ -237,6 +240,7 @@ pub struct AppService {
     pub(crate) sessions: Mutex<SessionManager>,
     pub(crate) luts: Mutex<HashMap<Uuid, Lut>>,
     pub(crate) histograms: Mutex<HashMap<PathBuf, Histogram>>,
+    pub(crate) raster_masks: Mutex<HashMap<Uuid, Arc<render_engine::RasterCoverage>>>,
     pub(crate) denoise_models: Mutex<HashMap<PathBuf, Arc<ai_denoise::DenoiseModel>>>,
     /// Cached Vulkan probe for the bundled Photo-HQ engine.
     pub(crate) photo_hq_probe: Mutex<Option<Result<(), String>>>,
@@ -279,6 +283,7 @@ impl AppService {
             sessions: Mutex::new(SessionManager::new()),
             luts: Mutex::new(HashMap::new()),
             histograms: Mutex::new(HashMap::new()),
+            raster_masks: Mutex::new(HashMap::new()),
             denoise_models: Mutex::new(HashMap::new()),
             photo_hq_probe: Mutex::new(None),
             save_lock: Mutex::new(()),

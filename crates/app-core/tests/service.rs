@@ -401,6 +401,151 @@ fn version_preview_renders_once_then_hits_its_own_cache() {
     assert!(!std::path::Path::new(&first.path).exists());
 }
 
+/// A raster mask must confine an adjustment to the selected pixels: this is the
+/// seam a segmentation model will write into.
+#[test]
+fn raster_mask_confines_an_adjustment_to_the_selected_half() {
+    use render_engine::RasterCoverage;
+
+    fn half_means(path: &str) -> (f32, f32) {
+        let image = image_core::decode_image_from_path(std::path::Path::new(path)).unwrap();
+        let width = image.width as usize;
+        let half = width / 2;
+        let mut left = 0f64;
+        let mut right = 0f64;
+        for y in 0..image.height as usize {
+            for x in 0..width {
+                let at = (y * width + x) * 4;
+                let luma = 0.2126 * image.rgba8[at] as f64
+                    + 0.7152 * image.rgba8[at + 1] as f64
+                    + 0.0722 * image.rgba8[at + 2] as f64;
+                if x < half {
+                    left += luma;
+                } else {
+                    right += luma;
+                }
+            }
+        }
+        let count = (image.height as usize * half) as f64;
+        ((left / count) as f32, (right / count) as f32)
+    }
+
+    let app = TestApp::new();
+    let state = import(&app);
+    let state = app
+        .service
+        .add_layer(AddLayerRequest {
+            project_id: state.id.clone(),
+            kind: AddLayerKind::Color,
+            name: None,
+            portrait: None,
+            mask: None,
+        })
+        .unwrap();
+    let project_id = state.id.clone();
+    let layer_id = state.layers.last().unwrap().id.clone();
+
+    app.service
+        .update_layer_params(UpdateLayerParamsRequest {
+            project_id: project_id.clone(),
+            layer_id: layer_id.clone(),
+            color: Some(ColorParams {
+                exposure: 1.0,
+                ..Default::default()
+            }),
+            portrait: None,
+            retouch: None,
+        })
+        .unwrap();
+    app.service
+        .commit_changes(CommitChangesRequest {
+            project_id: project_id.clone(),
+            label: "曝光".into(),
+        })
+        .unwrap();
+
+    let baseline = app
+        .service
+        .render_preview(RenderPreviewRequest {
+            project_id: project_id.clone(),
+            max_dimension: Some(320),
+            ignore_crop: false,
+        })
+        .unwrap();
+    let (baseline_left, baseline_right) = half_means(&baseline.path);
+
+    // Left half selected, right half not.
+    let coverage = RasterCoverage::from_values(2, 1, vec![1.0, 0.0]).unwrap();
+    let masked = app
+        .service
+        .apply_raster_mask(
+            Uuid::parse_str(&project_id).unwrap(),
+            Uuid::parse_str(&layer_id).unwrap(),
+            &coverage,
+            "test",
+        )
+        .unwrap();
+    let layer = masked
+        .layers
+        .iter()
+        .find(|layer| layer.id == layer_id)
+        .unwrap();
+    let raster = layer
+        .mask
+        .as_ref()
+        .and_then(|mask| mask.raster.as_ref())
+        .unwrap();
+    assert_eq!(raster.source, "test");
+    assert_ne!(raster.asset_id, uuid::Uuid::nil());
+
+    let preview = app
+        .service
+        .render_preview(RenderPreviewRequest {
+            project_id: project_id.clone(),
+            max_dimension: Some(320),
+            ignore_crop: false,
+        })
+        .unwrap();
+    let (masked_left, masked_right) = half_means(&preview.path);
+    // `baseline` already has the adjustment everywhere; the mask must keep it on
+    // the selected half and take it away from the rest. The 2-pixel coverage is
+    // deliberately tiny, so bilinear bleed at the seam is expected.
+    assert!(
+        (masked_left - baseline_left).abs() < 4.0,
+        "selected half must keep the adjustment: {masked_left} vs {baseline_left}"
+    );
+    assert!(
+        baseline_right - masked_right > 20.0,
+        "unselected half must lose the adjustment: {masked_right} vs {baseline_right}"
+    );
+
+    // A later brush stroke must not silently drop the raster coverage.
+    let brushed = app
+        .service
+        .set_layer_mask(SetLayerMaskRequest {
+            project_id: project_id.clone(),
+            layer_id: layer_id.clone(),
+            mask: Some(LayerMask {
+                strokes: vec![MaskStroke {
+                    points: vec![MaskPoint { x: 0.25, y: 0.25 }],
+                    radius: 0.1,
+                    feather: 0.2,
+                    erase: false,
+                }],
+                ..LayerMask::default()
+            }),
+        })
+        .unwrap();
+    let kept = brushed
+        .layers
+        .iter()
+        .find(|layer| layer.id == layer_id)
+        .and_then(|layer| layer.mask.as_ref())
+        .and_then(|mask| mask.raster.as_ref())
+        .expect("brush edits keep the raster mask");
+    assert_eq!(kept.asset_id, raster.asset_id);
+}
+
 #[test]
 fn slider_params_commit_once_and_undo_redo_are_monotonic() {
     let app = TestApp::new();
