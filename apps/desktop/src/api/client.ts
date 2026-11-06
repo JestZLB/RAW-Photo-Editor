@@ -52,6 +52,7 @@ import type {
   UpdateLayerParamsRequest,
   UpdateLayerRequest,
   VersionIdRequest,
+  VersionPreviewRequest,
   VersionSummary,
   WhiteBalanceResult,
 } from "./types";
@@ -72,6 +73,8 @@ export interface EditorApi {
   /** Restores a snapshot as the live document; the restore itself is undoable. */
   restoreVersion(req: VersionIdRequest): Promise<DocumentState>;
   deleteVersion(req: VersionIdRequest): Promise<VersionSummary[]>;
+  /** Render a snapshot for side-by-side comparison with the current edit. */
+  renderVersionPreview(req: VersionPreviewRequest): Promise<PreviewResult>;
   renameProject(req: RenameProjectRequest): Promise<ProjectSummary>;
   /** Rename every photo's photo set in one step (metadata only). */
   renameCollection(req: { collectionId: string; name: string }): Promise<void>;

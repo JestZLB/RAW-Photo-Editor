@@ -4,6 +4,7 @@ import type { EditorApi } from "../api/client";
 import type { DocumentState, LayerState, VersionSummary } from "../api/types";
 import { DEFAULT_COLOR } from "../lib/params";
 import { useEditorStore } from "./editorStore";
+import { useSettingsStore } from "./settingsStore";
 import { useToastStore } from "./toastStore";
 
 const NOW = "2026-11-05T00:00:00.000Z";
@@ -83,6 +84,7 @@ describe("version snapshots", () => {
 
   beforeEach(() => {
     useToastStore.setState({ toasts: [] });
+    useSettingsStore.setState({ previewMaxDimension: 1600 });
     versions = [version("version-1", "暖调")];
     api = {
       listVersions: vi.fn(async () => versions.map((item) => ({ ...item }))),
@@ -95,6 +97,16 @@ describe("version snapshots", () => {
         return versions;
       }),
       restoreVersion: vi.fn(async () => documentWithExposure(0.5)),
+      renderVersionPreview: vi.fn(async () => ({
+        path: "C:/cache/version-1-d1600.png",
+        width: 1200,
+        height: 800,
+        revision: 4,
+        durationMs: 2,
+        cached: false,
+        backend: "cpu",
+        histogram: null,
+      })),
       renderPreview: vi.fn(async () => ({
         path: "C:/cache/render.png",
         width: 1600,
@@ -155,5 +167,32 @@ describe("version snapshots", () => {
       versionId: "version-1",
     });
     expect(useEditorStore.getState().versions).toEqual([]);
+  });
+
+  it("renders a snapshot for side-by-side comparison", async () => {
+    await useEditorStore.getState().openVersions();
+    await useEditorStore.getState().compareVersion("version-1");
+
+    expect(api.renderVersionPreview).toHaveBeenCalledWith({
+      projectId: "project-a",
+      versionId: "version-1",
+      maxDimension: 1600,
+    });
+    const compare = useEditorStore.getState().versionCompare;
+    expect(compare?.version.name).toBe("暖调");
+    expect(compare?.path).toBe("C:/cache/version-1-d1600.png");
+    expect(compare?.width).toBe(1200);
+
+    useEditorStore.getState().clearVersionCompare();
+    expect(useEditorStore.getState().versionCompare).toBeNull();
+  });
+
+  it("drops the comparison when its snapshot is deleted", async () => {
+    await useEditorStore.getState().openVersions();
+    await useEditorStore.getState().compareVersion("version-1");
+    expect(useEditorStore.getState().versionCompare).not.toBeNull();
+
+    await useEditorStore.getState().deleteVersion("version-1");
+    expect(useEditorStore.getState().versionCompare).toBeNull();
   });
 });

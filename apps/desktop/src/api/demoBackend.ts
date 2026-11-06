@@ -79,6 +79,7 @@ import type {
   SyncColorAdjustmentsRequest,
   SyncColorAdjustmentsResult,
   VersionIdRequest,
+  VersionPreviewRequest,
   VersionSummary,
   WhiteBalanceResult,
 } from "./types";
@@ -1046,6 +1047,36 @@ export class DemoBackend implements EditorApi {
     const project = this.requireProject(req.projectId);
     project.versions = project.versions.filter((item) => item.summary.id !== req.versionId);
     return this.listVersions({ projectId: req.projectId });
+  }
+
+  async renderVersionPreview(req: VersionPreviewRequest): Promise<PreviewResult> {
+    const project = this.requireProject(req.projectId);
+    const entry = project.versions.find((item) => item.summary.id === req.versionId);
+    if (!entry) {
+      throw apiError(
+        "VERSION_NOT_FOUND",
+        "Version not found",
+        "这个版本已经不存在，请刷新列表。",
+      );
+    }
+    const started = performance.now();
+    await delay(10);
+    const requested = req.maxDimension ?? PREVIEW_MAX_DIMENSION;
+    const maxDimension = Math.min(PREVIEW_MAX_DIMENSION, Math.max(320, requested));
+    // Render the snapshot without swapping the live document: renderToCanvas
+    // only reads `doc` and `sourceUrl`.
+    const canvas = await this.renderToCanvas({ ...project, doc: entry.snapshot }, maxDimension);
+    const pixels = context2d(canvas).getImageData(0, 0, canvas.width, canvas.height).data;
+    return {
+      path: canvas.toDataURL("image/png"),
+      width: canvas.width,
+      height: canvas.height,
+      revision: entry.snapshot.revision,
+      durationMs: Math.round(performance.now() - started),
+      cached: false,
+      backend: "cpu",
+      histogram: histogramFromRgba(pixels),
+    };
   }
 
   async commitChanges(req: CommitChangesRequest): Promise<DocumentState> {
