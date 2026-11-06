@@ -14,6 +14,7 @@ import type {
   AutoToneResult,
   CacheClearResult,
   CancelExportRequest,
+  ClearRasterMaskRequest,
   CollectionSummary,
   CommitChangesRequest,
   CreateProjectRequest,
@@ -45,6 +46,9 @@ import type {
   ProviderTestResult,
   RenameProjectRequest,
   RenderPreviewRequest,
+  SegmentMaskRequest,
+  SegmentationCapability,
+  SegmentationCapabilityRequest,
   SetCropRequest,
   SetLayerMaskRequest,
   SetProviderCredentialRequest,
@@ -106,6 +110,12 @@ export function createTauriClient(): EditorApi {
     deleteVersion: (req: VersionIdRequest) => call<VersionSummary[]>("delete_version", req),
     renderVersionPreview: (req: VersionPreviewRequest) =>
       call<PreviewResult>("render_version_preview", req),
+    checkSegmentationCapability: (req: SegmentationCapabilityRequest) =>
+      call<SegmentationCapability>("check_segmentation_capability", req),
+    runSegmentationMask: (req: SegmentMaskRequest) =>
+      call<DocumentState>("run_segmentation_mask", req),
+    clearRasterMask: (req: ClearRasterMaskRequest) =>
+      call<DocumentState>("clear_raster_mask", req),
     renameProject: (req: RenameProjectRequest) =>
       call<ProjectSummary>("rename_project", req),
     renameCollection: (req) => call<void>("rename_collection", req),

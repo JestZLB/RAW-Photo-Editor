@@ -16,6 +16,7 @@ import {
   MoveUpRight,
   Plus,
   ScanFace,
+  ScanLine,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -25,6 +26,7 @@ import { cn } from "../lib/cn";
 import { canMoveLayer, layersTopFirst } from "../lib/layers";
 import { defaultMaskGradient, maskHasContent, maskSummary } from "../lib/mask";
 import { useEditorStore } from "../stores/editorStore";
+import { useSettingsStore } from "../stores/settingsStore";
 import { Button } from "./controls/Button";
 import { Slider } from "./controls/Slider";
 
@@ -132,9 +134,21 @@ export function LayersPanel() {
   const setMaskGradient = useEditorStore((state) => state.setMaskGradient);
   const setMaskOptions = useEditorStore((state) => state.setMaskOptions);
   const clearLayerMask = useEditorStore((state) => state.clearLayerMask);
+  const segmentationCapability = useEditorStore((state) => state.segmentationCapability);
+  const segmentationBusy = useEditorStore((state) => state.segmentationBusy);
+  const checkSegmentation = useEditorStore((state) => state.checkSegmentation);
+  const applySegmentationMask = useEditorStore((state) => state.applySegmentationMask);
+  const clearRasterMask = useEditorStore((state) => state.clearRasterMask);
+  const segmentationModelPath = useSettingsStore((state) => state.segmentationModelPath);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Probe once per configured model so the mask button can explain itself
+  // instead of failing after a click.
+  useEffect(() => {
+    void checkSegmentation();
+  }, [checkSegmentation, segmentationModelPath]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -293,6 +307,33 @@ export function LayersPanel() {
                 <Sparkles size={12} />
                 <span>自动肤色</span>
               </button>
+              <button
+                type="button"
+                className={cn("mini-action layer-mask__smart", layer.mask?.raster && "is-active")}
+                aria-label="用分割模型生成智能蒙版"
+                aria-pressed={Boolean(layer.mask?.raster)}
+                title={
+                  segmentationCapability?.available
+                    ? "按分割模型生成前景蒙版；可用画笔继续修整"
+                    : (segmentationCapability?.reason ?? "正在检查分割模型…")
+                }
+                disabled={!segmentationCapability?.available || segmentationBusy}
+                onClick={() => void applySegmentationMask(layer.id)}
+              >
+                <ScanLine size={12} />
+                <span>{segmentationBusy ? "生成中…" : "智能蒙版"}</span>
+              </button>
+              {layer.mask?.raster ? (
+                <button
+                  type="button"
+                  className="mini-action layer-mask__smart-clear"
+                  aria-label="移除智能蒙版"
+                  title="只移除分割蒙版，保留画笔与渐变"
+                  onClick={() => void clearRasterMask(layer.id)}
+                >
+                  移除智能
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={cn("mini-action layer-mask__mode", maskBrushErase && "is-active")}

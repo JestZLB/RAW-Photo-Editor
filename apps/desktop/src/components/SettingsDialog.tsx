@@ -16,6 +16,7 @@ import {
   Pencil,
   RotateCcw,
   ScanFace,
+  ScanLine,
   Sparkles,
   Trash2,
   Wand2,
@@ -209,6 +210,21 @@ export function SettingsDialog() {
     try {
       const path = await api.pickDenoiseModel();
       if (path) settings.update({ aiDenoiseModelPath: path });
+    } catch (error) {
+      toastError(userMessageOf(error, "无法打开文件选择窗口，请重试。"));
+    }
+  };
+
+  const segmentationModelName = settings.segmentationModelPath
+    ? (settings.segmentationModelPath.split(/[\\/]/).pop() ??
+      settings.segmentationModelPath)
+    : "未选择模型";
+
+  const handlePickSegmentationModel = async (): Promise<void> => {
+    if (!api) return;
+    try {
+      const path = await api.pickDenoiseModel();
+      if (path) settings.update({ segmentationModelPath: path });
     } catch (error) {
       toastError(userMessageOf(error, "无法打开文件选择窗口，请重试。"));
     }
@@ -828,6 +844,62 @@ export function SettingsDialog() {
               {mode === "tauri"
                 ? "Photo-HQ 先按最长边 1600px 处理，再放大 4 倍并缩回原尺寸；ONNX 模型需输入 [1,3,H,W]、输出保持原尺寸。首次启用会自动检测本机能力，不可用时回退普通降噪。权重授权与适用场景由模型来源决定，应用只在本机读取文件。"
                 : "浏览器演示模式没有本地推理能力，AI 降噪仅在桌面版可用。"}
+            </p>
+          </section>
+
+          <section className="settings-section">
+            <div className="settings-section__head settings-section__head--stacked">
+              <div>
+                <h3>
+                  <ScanLine size={14} aria-hidden="true" />
+                  智能蒙版（分割模型）
+                </h3>
+                <p>
+                  应用不内置分割权重。选择一个本地 .onnx 后，调色/人像图层的蒙版区会出现「智能蒙版」。
+                </p>
+              </div>
+              <span
+                className={cn(
+                  "badge",
+                  settings.segmentationModelPath ? "badge--green" : "badge--amber",
+                )}
+              >
+                {settings.segmentationModelPath ? "已配置" : "未配置"}
+              </span>
+            </div>
+            <div className="settings-cache-row">
+              <div>
+                <strong title={settings.segmentationModelPath ?? undefined}>
+                  {segmentationModelName}
+                </strong>
+                <span>
+                  {settings.segmentationModelPath
+                    ? "ONNX 模型 · 已配置"
+                    : "输入 [1,3,512,512] RGB，输出 [1,1,H,W] 或 [1,2,H,W]（第二通道为前景）"}
+                </span>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={mode !== "tauri"}
+                onClick={() => void handlePickSegmentationModel()}
+              >
+                {settings.segmentationModelPath ? "更换模型" : "选择 .onnx 模型"}
+              </Button>
+              {settings.segmentationModelPath ? (
+                <button
+                  type="button"
+                  className="panel-link panel-link--inline"
+                  onClick={() => settings.update({ segmentationModelPath: null })}
+                >
+                  清除
+                </button>
+              ) : null}
+            </div>
+            <p className="field-hint">
+              {mode === "tauri"
+                ? "首次进入图层面板会用 512×512 空图实跑一次，验证输入与输出契约；不匹配会直接给出原因，不会生成空蒙版。"
+                : "浏览器演示模式没有本地推理能力，智能蒙版仅在桌面版可用。"}
             </p>
           </section>
 

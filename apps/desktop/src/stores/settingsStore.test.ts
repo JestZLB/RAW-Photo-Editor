@@ -62,6 +62,7 @@ describe("settings store", () => {
       exportMetadata: "privacy",
       exportBitDepth: "sixteen",
       aiDenoiseModelPath: null,
+      segmentationModelPath: null,
       aiDenoiseStrength: 100,
       aiDenoiseEngine: "photoHq",
       photoHqStrength: 80,
@@ -89,6 +90,12 @@ describe("settings store", () => {
     expect(
       sanitizeSettings({ ...DEFAULT_SETTINGS, aiDenoiseModelPath: "  ", aiDenoiseStrength: 900 }),
     ).toMatchObject({ aiDenoiseModelPath: null, aiDenoiseStrength: 100 });
+    expect(
+      sanitizeSettings({ ...DEFAULT_SETTINGS, segmentationModelPath: "  " }),
+    ).toMatchObject({ segmentationModelPath: null });
+    expect(
+      sanitizeSettings({ ...DEFAULT_SETTINGS, segmentationModelPath: " D:\\m\\seg.onnx " }),
+    ).toMatchObject({ segmentationModelPath: "D:\\m\\seg.onnx" });
     expect(
       sanitizeSettings({
         ...DEFAULT_SETTINGS,

@@ -33,6 +33,7 @@ import type {
   ProviderInfo,
   ProviderTestResult,
   ColorParams,
+  SegmentationCapability,
   VersionSummary,
 } from "../api/types";
 import {
@@ -217,6 +218,11 @@ export interface EditorState {
   regionOverlayActive: boolean;
   /** True while measured ellipses are being dragged on the canvas. */
   geometryEditActive: boolean;
+  /** Probe result for the segmentation model configured in settings. */
+  segmentationCapability: SegmentationCapability | null;
+  /** Model path the cached probe describes, so a change re-probes. */
+  segmentationCapabilityKey: string | null;
+  segmentationBusy: boolean;
   /** True while a local ONNX denoise pass is running. */
   aiDenoiseBusy: boolean;
   /** True while the Photo-HQ 4x pass is running. */
@@ -360,6 +366,12 @@ export interface EditorState {
   removeLut: () => Promise<void>;
   addMaskStroke: (layerId: string, stroke: MaskStroke) => Promise<void>;
   setAutoSkinMask: (layerId: string, enabled: boolean) => Promise<void>;
+  /** Probe the configured segmentation model (cached per path). */
+  checkSegmentation: () => Promise<void>;
+  /** Run the model and attach its output as a raster mask on the layer. */
+  applySegmentationMask: (layerId: string) => Promise<void>;
+  /** Remove only the raster coverage, keeping brush and gradient sources. */
+  clearRasterMask: (layerId: string) => Promise<void>;
   setMaskGradient: (layerId: string, gradient: MaskGradient | null) => Promise<void>;
   setMaskOptions: (
     layerId: string,
@@ -1109,6 +1121,9 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     regionBusy: false,
     regionOverlayActive: false,
     geometryEditActive: false,
+    segmentationCapability: null,
+    segmentationCapabilityKey: null,
+    segmentationBusy: false,
     aiDenoiseBusy: false,
     photoHqBusy: false,
     photoHqJobId: null,
@@ -2792,6 +2807,67 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       } catch (error) {
         patchLocalLayer(layerId, (item) => ({ ...item, mask: previous }));
         errorToast(error, "自动肤色范围没有保存，请重试。");
+      }
+    },
+
+    checkSegmentation: async () => {
+      const api = get().api;
+      if (!api) return;
+      const path = useSettingsStore.getState().segmentationModelPath;
+      const key = path ?? "";
+      if (get().segmentationCapabilityKey === key && get().segmentationCapability) return;
+      try {
+        const capability = await api.checkSegmentationCapability({ modelPath: path });
+        set({ segmentationCapability: capability, segmentationCapabilityKey: key });
+      } catch {
+        set({
+          segmentationCapability: { available: false, reason: "无法读取分割模型状态。" },
+          segmentationCapabilityKey: key,
+        });
+      }
+    },
+
+    applySegmentationMask: async (layerId) => {
+      const api = get().api;
+      const doc = get().doc;
+      const path = useSettingsStore.getState().segmentationModelPath;
+      if (!api || !doc) return;
+      if (!path) {
+        toastInfo("先到设置里选择分割模型，再生成智能蒙版。", "还没有分割模型");
+        return;
+      }
+      if (get().segmentationBusy) return;
+      set({ segmentationBusy: true });
+      try {
+        const next = await api.runSegmentationMask({
+          projectId: doc.id,
+          layerId,
+          modelPath: path,
+        });
+        if (isCurrentProject(doc.id)) {
+          applyDocument(next);
+          schedulePreview(30);
+          toastSuccess("已生成智能蒙版；可用画笔继续修整，或随时移除。");
+        }
+      } catch (error) {
+        errorToast(error, "智能蒙版没有生成，请检查模型后重试。");
+      } finally {
+        set({ segmentationBusy: false });
+      }
+    },
+
+    clearRasterMask: async (layerId) => {
+      const api = get().api;
+      const doc = get().doc;
+      if (!api || !doc) return;
+      try {
+        const next = await api.clearRasterMask({ projectId: doc.id, layerId });
+        if (isCurrentProject(doc.id)) {
+          applyDocument(next);
+          schedulePreview(30);
+        }
+      } catch (error) {
+        errorToast(error, "移除智能蒙版失败，请重试。");
       }
     },
 

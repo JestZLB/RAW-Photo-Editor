@@ -324,6 +324,43 @@ export interface LayerMask {
   feather?: number;
   /** Overall mask strength, 0..1. */
   density?: number;
+  /**
+   * Pixel coverage from a segmentation model, stored as a project asset. The
+   * renderer merges it with the vector sources by taking the maximum (ADR-014).
+   */
+  raster?: MaskRaster | null;
+}
+
+export interface MaskRaster {
+  assetId: string;
+  /** Coverage above this value is kept, 0..1. */
+  threshold: number;
+  /** Softness of the threshold transition, in coverage units. */
+  softness: number;
+  /** Provider label for diagnostics, e.g. `onnx:foreground`. */
+  source: string;
+}
+
+export interface SegmentationCapability {
+  available: boolean;
+  reason: string | null;
+}
+
+export interface SegmentationCapabilityRequest {
+  modelPath?: string | null;
+}
+
+export interface SegmentMaskRequest {
+  projectId: string;
+  layerId: string;
+  modelPath: string;
+  threshold?: number;
+  softness?: number;
+}
+
+export interface ClearRasterMaskRequest {
+  projectId: string;
+  layerId: string;
 }
 
 export interface LayerState {
