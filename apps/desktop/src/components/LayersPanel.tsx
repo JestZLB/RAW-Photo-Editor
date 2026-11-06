@@ -125,6 +125,7 @@ export function LayersPanel() {
   const setLayerBlendMode = useEditorStore((state) => state.setLayerBlendMode);
   const setLayerOpacity = useEditorStore((state) => state.setLayerOpacity);
   const editBlur = useEditorStore((state) => state.editBlur);
+  const applyLook = useEditorStore((state) => state.applyLook);
   const commitEdit = useEditorStore((state) => state.commitEdit);
   const maskBrushActive = useEditorStore((state) => state.maskBrushActive);
   const maskBrushRadius = useEditorStore((state) => state.maskBrushRadius);
@@ -216,9 +217,14 @@ export function LayersPanel() {
               type="button"
               className={cn("mini-action", layer.mask?.inverted && "is-active")}
               aria-pressed={layer.mask?.inverted ?? false}
-              title="虚化作用于蒙版覆盖处；打开后改为保护蒙版内的主体，只虚化外围"
+              title="虚化作用于蒙版覆盖处；打开后改为保护蒙版内的主体，只虚化外围。分割边缘较硬时会自动补最小羽化"
               onClick={() =>
-                void setMaskOptions(layer.id, { inverted: !(layer.mask?.inverted ?? false) })
+                void setMaskOptions(layer.id, {
+                  inverted: !(layer.mask?.inverted ?? false),
+                  // Segmentation edges are hard; a minimum feather keeps the
+                  // boundary from looking cut out. Only ever raises the value.
+                  feather: Math.max(layer.mask?.feather ?? 0, 0.15),
+                })
               }
             >
               <ScanLine size={12} />
@@ -380,6 +386,26 @@ export function LayersPanel() {
                 <Eraser size={13} />
                 <span>{maskBrushErase ? "擦除中" : "擦除"}</span>
               </button>
+              {layer.mask && maskHasContent(layer.mask) ? (
+                <>
+                  <button
+                    type="button"
+                    className="mini-action layer-mask__look"
+                    title="用当前蒙版新建调色图层，只提亮蒙版内的主体"
+                    onClick={() => void applyLook(layer.id, "brightenSubject")}
+                  >
+                    提亮主体
+                  </button>
+                  <button
+                    type="button"
+                    className="mini-action layer-mask__look"
+                    title="用当前蒙版反相新建调色图层，只降低背景饱和度"
+                    onClick={() => void applyLook(layer.id, "desaturateBackground")}
+                  >
+                    背景去色
+                  </button>
+                </>
+              ) : null}
               {layer.mask ? (
                 <button
                   type="button"
