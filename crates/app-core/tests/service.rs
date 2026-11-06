@@ -406,6 +406,61 @@ fn version_preview_renders_once_then_hits_its_own_cache() {
     assert!(!std::path::Path::new(&first.path).exists());
 }
 
+/// Automatic eviction (count/byte budget) must clean up cached renders too,
+/// otherwise every trimmed snapshot leaves an orphan PNG behind forever.
+#[test]
+fn automatic_eviction_removes_cached_version_previews() {
+    let app = TestApp::new();
+    let state = import(&app);
+    let project_id = state.id.clone();
+
+    let first = app
+        .service
+        .create_version(CreateVersionRequest {
+            project_id: project_id.clone(),
+            name: "最早".into(),
+        })
+        .unwrap();
+    let oldest_id = first[0].id.clone();
+    let preview = app
+        .service
+        .render_version_preview(RenderVersionPreviewRequest {
+            project_id: project_id.clone(),
+            version_id: oldest_id.clone(),
+            max_dimension: Some(320),
+        })
+        .unwrap();
+    let preview_path = std::path::PathBuf::from(&preview.path);
+    assert!(preview_path.is_file());
+
+    // MAX_VERSIONS_PER_PROJECT is 50 in the service; 50 more pushes the first
+    // snapshot out. Keep this in sync if that constant changes.
+    for index in 0..50 {
+        app.service
+            .create_version(CreateVersionRequest {
+                project_id: project_id.clone(),
+                name: format!("v{index}"),
+            })
+            .unwrap();
+    }
+
+    let list = app
+        .service
+        .list_versions(ProjectIdRequest {
+            project_id: project_id.clone(),
+        })
+        .unwrap();
+    assert_eq!(list.len(), 50);
+    assert!(
+        !list.iter().any(|row| row.id == oldest_id),
+        "oldest snapshot must be evicted"
+    );
+    assert!(
+        !preview_path.is_file(),
+        "its cached preview must be deleted with it"
+    );
+}
+
 /// A raster mask must confine an adjustment to the selected pixels: this is the
 /// seam a segmentation model will write into.
 #[test]
