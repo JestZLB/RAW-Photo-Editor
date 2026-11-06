@@ -1,4 +1,4 @@
-import type { ColorParams, PortraitParams } from "../api/types";
+import type { BlurParams, ColorParams, PortraitParams } from "../api/types";
 
 export const DEFAULT_COLOR: ColorParams = {
   exposure: 0,
@@ -32,6 +32,11 @@ export const DEFAULT_COLOR: ColorParams = {
   lutAssetId: null,
   lutStrength: 1,
 };
+
+/** Matches `BlurParams::default()` in the document crate. */
+export const DEFAULT_BLUR: BlurParams = { radius: 0.012 };
+/** Document-side clamp (`BlurParams::sanitized`). */
+export const BLUR_RADIUS_MAX = 0.08;
 
 export const DEFAULT_PORTRAIT: PortraitParams = {
   intensity: 78,

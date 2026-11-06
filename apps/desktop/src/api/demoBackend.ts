@@ -15,7 +15,7 @@ import {
 import { applyHsl } from "../lib/hsl";
 import { applyToneLut, buildToneLut, usesToneCurve } from "../lib/colorAdjust";
 import { parseCube, sampleCube, type CubeLut } from "../lib/lut";
-import { DEFAULT_COLOR, DEFAULT_PORTRAIT } from "../lib/params";
+import { DEFAULT_BLUR, DEFAULT_COLOR, DEFAULT_PORTRAIT } from "../lib/params";
 import { neutralWhiteBalance } from "../lib/whiteBalance";
 import type { EditorApi } from "./client";
 import { apiError } from "./errors";
@@ -542,6 +542,55 @@ function applyColorToCanvas(
   ctx.putImageData(original, 0, 0);
 }
 
+/**
+ * Approximate the desktop blur pass: draw the canvas through a CSS blur filter,
+ * then blend it back only where the mask covers. A missing mask blurs the whole
+ * frame, matching the Rust renderer.
+ */
+function applyBlurToCanvas(
+  canvas: HTMLCanvasElement,
+  radius: number,
+  opacity: number,
+  mask: Float32Array | null,
+): void {
+  const width = canvas.width;
+  const height = canvas.height;
+  const shortest = Math.min(width, height);
+  const pixels = Math.max(0, Math.min(0.08, radius)) * shortest;
+  const alpha = clamp01(opacity);
+  if (pixels < 0.5 || alpha <= 0) return;
+
+  const blurred = createCanvas(width, height);
+  const blurCtx = context2d(blurred);
+  blurCtx.filter = `blur(${pixels.toFixed(2)}px)`;
+  blurCtx.drawImage(canvas, 0, 0);
+  blurCtx.filter = "none";
+
+  if (!mask) {
+    const ctx = context2d(canvas);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(blurred, 0, 0);
+    ctx.restore();
+    return;
+  }
+
+  const soft = context2d(blurred).getImageData(0, 0, width, height);
+  const ctx = context2d(canvas);
+  const sharp = ctx.getImageData(0, 0, width, height);
+  for (let index = 0; index < mask.length; index += 1) {
+    const coverage = clamp01(mask[index]) * alpha;
+    if (coverage <= 0) continue;
+    const at = index * 4;
+    for (let channel = 0; channel < 3; channel += 1) {
+      sharp.data[at + channel] = Math.round(
+        sharp.data[at + channel] * (1 - coverage) + soft.data[at + channel] * coverage,
+      );
+    }
+  }
+  ctx.putImageData(sharp, 0, 0);
+}
+
 function applyPortraitToCanvas(
   canvas: HTMLCanvasElement,
   params: PortraitParams,
@@ -976,6 +1025,7 @@ export class DemoBackend implements EditorApi {
     const layer = this.requireEditableLayer(project, req.layerId);
     if (req.color) layer.color = { ...req.color };
     if (req.portrait) layer.portrait = { ...req.portrait };
+    if (req.blur) layer.blur = { ...req.blur };
     if (req.retouch)
       layer.retouch = {
         spots: req.retouch.spots.map((spot) => ({ ...spot })),
@@ -1234,7 +1284,9 @@ export class DemoBackend implements EditorApi {
           ? "人像精修"
           : req.kind === "retouch"
             ? "局部修复"
-            : "调色调整"),
+            : req.kind === "blur"
+              ? "背景虚化"
+              : "调色调整"),
       kind: req.kind,
       visible: true,
       locked: false,
@@ -1249,6 +1301,7 @@ export class DemoBackend implements EditorApi {
         req.kind === "retouch"
           ? { spots: [], warp: [], freeze: [], freezeGrid: [] }
           : null,
+      blur: req.kind === "blur" ? { ...DEFAULT_BLUR } : null,
       mask: req.mask ?? null,
       assetId: null,
       previewPath: null,
@@ -1772,6 +1825,7 @@ export class DemoBackend implements EditorApi {
       color: null,
       portrait: null,
       retouch: null,
+      blur: null,
       mask: null,
       assetId: resultAssetId,
       previewPath: job.resultPath,
@@ -1880,6 +1934,7 @@ export class DemoBackend implements EditorApi {
       color: null,
       portrait: null,
       retouch: null,
+      blur: null,
       mask: null,
       assetId: source.assetId,
       previewPath: thumbnailPath,
@@ -2050,6 +2105,11 @@ export class DemoBackend implements EditorApi {
           ? rasterizeMask(layer.mask, canvas, sourceWidth, sourceHeight, crop, width, height)
           : null;
         applyPortraitToCanvas(canvas, layer.portrait, layer.opacity, mask);
+      } else if (layer.kind === "blur" && layer.blur) {
+        const mask = layer.mask
+          ? rasterizeMask(layer.mask, canvas, sourceWidth, sourceHeight, crop, width, height)
+          : null;
+        applyBlurToCanvas(canvas, layer.blur.radius, layer.opacity, mask);
       } else if (layer.kind === "aiResult" && layer.previewPath) {
         try {
           const resultImage = await this.loadCachedImage(layer.previewPath);

@@ -26,6 +26,7 @@ function layer(overrides: Partial<LayerState>): LayerState {
     color: null,
     portrait: null,
     retouch: null,
+    blur: null,
     mask: null,
     assetId: null,
     previewPath: null,

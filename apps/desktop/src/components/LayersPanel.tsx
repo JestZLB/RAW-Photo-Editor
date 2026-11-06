@@ -25,6 +25,7 @@ import type { BlendMode, LayerKind, LayerMask, LayerState } from "../api/types";
 import { cn } from "../lib/cn";
 import { canMoveLayer, layersTopFirst } from "../lib/layers";
 import { defaultMaskGradient, maskHasContent, maskSummary } from "../lib/mask";
+import { BLUR_RADIUS_MAX, DEFAULT_BLUR } from "../lib/params";
 import { useEditorStore } from "../stores/editorStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { Button } from "./controls/Button";
@@ -123,6 +124,7 @@ export function LayersPanel() {
   const setLayerVisibility = useEditorStore((state) => state.setLayerVisibility);
   const setLayerBlendMode = useEditorStore((state) => state.setLayerBlendMode);
   const setLayerOpacity = useEditorStore((state) => state.setLayerOpacity);
+  const editBlur = useEditorStore((state) => state.editBlur);
   const commitEdit = useEditorStore((state) => state.commitEdit);
   const maskBrushActive = useEditorStore((state) => state.maskBrushActive);
   const maskBrushRadius = useEditorStore((state) => state.maskBrushRadius);
@@ -174,7 +176,7 @@ export function LayersPanel() {
   const base = doc.layers.find((layer) => layer.kind === "base") ?? null;
   const layerCount = doc.layers.length;
 
-  const handleAdd = (kind: "portrait" | "color"): void => {
+  const handleAdd = (kind: "portrait" | "color" | "blur"): void => {
     setMenuOpen(false);
     void addLayer(kind);
   };
@@ -191,6 +193,39 @@ export function LayersPanel() {
     }
     return (
       <div className="layer-detail">
+        {layer.kind === "blur" ? (
+          <>
+            <Slider
+              label="虚化半径"
+              value={Math.round((layer.blur?.radius ?? DEFAULT_BLUR.radius) * 1000) / 10}
+              min={0}
+              max={BLUR_RADIUS_MAX * 100}
+              step={0.1}
+              defaultValue={DEFAULT_BLUR.radius * 100}
+              unit="%"
+              compact
+              disabled={layer.locked}
+              onChange={(value) =>
+                editBlur(layer.id, {
+                  radius: Math.max(0, Math.min(BLUR_RADIUS_MAX, value / 100)),
+                })
+              }
+              onCommit={() => void commitEdit("背景虚化")}
+            />
+            <button
+              type="button"
+              className={cn("mini-action", layer.mask?.inverted && "is-active")}
+              aria-pressed={layer.mask?.inverted ?? false}
+              title="虚化作用于蒙版覆盖处；打开后改为保护蒙版内的主体，只虚化外围"
+              onClick={() =>
+                void setMaskOptions(layer.id, { inverted: !(layer.mask?.inverted ?? false) })
+              }
+            >
+              <ScanLine size={12} />
+              <span>保护主体</span>
+            </button>
+          </>
+        ) : null}
         <Slider
           label="不透明度"
           value={Math.round(layer.opacity * 100)}
@@ -255,7 +290,7 @@ export function LayersPanel() {
             >
               <CopyPlus size={13} />
             </button>
-            {layer.kind === "color" || layer.kind === "portrait" ? (
+            {layer.kind === "color" || layer.kind === "portrait" || layer.kind === "blur" ? (
               <button
                 type="button"
                 className="mini-action"
@@ -278,7 +313,7 @@ export function LayersPanel() {
             </button>
           </div>
         </div>
-        {layer.kind === "color" || layer.kind === "portrait" ? (
+        {layer.kind === "color" || layer.kind === "portrait" || layer.kind === "blur" ? (
           <div className={cn("layer-mask", maskBrushActive && "is-active")}>
             <div className="layer-mask__head">
               <span>局部修饰</span>
@@ -477,6 +512,15 @@ export function LayersPanel() {
                 <span>
                   <strong>人像调整</strong>
                   <small>磨皮、肤色与提亮</small>
+                </span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => handleAdd("blur")}>
+                <span className="layers-add__icon layers-add__icon--blur">
+                  <ScanLine size={14} />
+                </span>
+                <span>
+                  <strong>背景虚化</strong>
+                  <small>按蒙版虚化，可保护主体</small>
                 </span>
               </button>
               <button type="button" role="menuitem" onClick={() => handleAdd("color")}>

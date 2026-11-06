@@ -6,6 +6,7 @@ export const LAYER_KIND_LABEL: Record<LayerKind, string> = {
   color: "调色调整",
   aiResult: "AI 结果",
   retouch: "局部修复",
+  blur: "背景虚化",
 };
 
 export function baseLayerOf(layers: LayerState[]): LayerState | null {
