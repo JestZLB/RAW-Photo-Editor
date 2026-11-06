@@ -60,6 +60,7 @@ fn document_json() -> Value {
             "color": null,
             "portrait": null,
             "retouch": null,
+            "blur": null,
             "mask": {
                 "strokes": [],
                 "autoSkin": false,
@@ -151,6 +152,7 @@ fn layer_and_mask_keys_are_pinned() {
         vec![
             "assetId",
             "blendMode",
+            "blur",
             "color",
             "createdAt",
             "id",
@@ -247,6 +249,16 @@ fn request_payloads_accept_the_names_the_frontend_sends() {
     .expect("update_layer_params parses");
     assert_eq!(params.project_id, "project-a");
     assert_eq!(params.layer_id, "layer-color");
+
+    // Blur slider: the radius travels with the same drag command.
+    let blur: UpdateLayerParamsRequest = serde_json::from_value(json!({
+        "projectId": "project-a",
+        "layerId": "layer-blur",
+        "blur": { "radius": 0.05 }
+    }))
+    .expect("blur params parse");
+    assert_eq!(blur.blur.expect("blur payload").radius, 0.05);
+    assert!(blur.color.is_none() && blur.portrait.is_none());
 
     let commit: CommitChangesRequest = serde_json::from_value(json!({
         "projectId": "project-a",

@@ -338,7 +338,7 @@ interface DocumentState {
 | `import_photo_bytes` | `{ fileName: string; dataBase64: string; collectionId?: string; collectionName?: string }` | `DocumentState`（≤32MB，用于示例照片） |
 | `import_lut` | `{ projectId: string; path?: string; fileName?: string; dataBase64?: string }` | `LutAssetResult`（校验并托管 `.cube`，不修改文档；`path` 用于桌面版，`dataBase64` 用于演示模式） |
 | `render_preview` | `{ projectId: string; maxDimension?: number }` | `PreviewResult` |
-| `update_layer_params` | `{ projectId: string; layerId: string; color?: ColorParams; portrait?: PortraitParams }` | `DocumentState`（不提交历史） |
+| `update_layer_params` | `{ projectId: string; layerId: string; color?: ColorParams; portrait?: PortraitParams; retouch?: RetouchParams; blur?: BlurParams }` | `DocumentState`（不提交历史；`blur.radius` 为最短边比例 0..0.08，仅 `blur` 图层接受） |
 | `update_layer_params_meta` | 同 `update_layer_params` | `DocumentState`（`layers` 恒为空数组，只用于合并 `revision` / 历史；拖动中每 ~70ms 的高频写入走这里，避免整份蒙版与修复点在 IPC 上往返） |
 | `list_versions` | `{ projectId: string }` | `VersionSummary[]`（按创建时间倒序，最多 200 条；不含文档 JSON） |
 | `create_version` | `{ projectId: string; name: string }` | `VersionSummary[]`（保存当前文档快照；名称裁剪空白后 1..60 字符，超限返回 `INVALID_ARGUMENT`；每项目超过 50 个时丢弃最旧） |
@@ -353,7 +353,7 @@ interface DocumentState {
 | `pick_white_balance` | `{ projectId: string; x: number; y: number }` | `WhiteBalanceResult`（x/y 为原始源图归一化坐标，只读采样，不修改文档） |
 | `auto_tone` | `{ projectId: string }` | `AutoToneResult`（基于源图亮度直方图；只读建议，不修改文档） |
 | `set_crop` | `{ projectId: string; crop: CropState }` | `DocumentState`（写入裁剪与角度并提交一条历史；角度非零时导出会旋转完整画面后再裁剪） |
-| `add_layer` | `{ projectId: string; kind: "portrait" \| "color" \| "retouch"; name?: string; portrait?: PortraitParams; mask?: LayerMask \| null }` | `DocumentState`（可选初始参数/蒙版用于一次历史记录创建人脸美颜层；非人像图层携带 `portrait` 或不可蒙版图层携带 `mask` 会被拒绝） |
+| `add_layer` | `{ projectId: string; kind: "portrait" \| "color" \| "retouch" \| "blur"; name?: string; portrait?: PortraitParams; mask?: LayerMask \| null }` | `DocumentState`（可选初始参数/蒙版用于一次历史记录创建人脸美颜层；非人像图层携带 `portrait` 或不可蒙版图层携带 `mask` 会被拒绝；`blur` 图层默认半径 0.012，支持画笔与栅格蒙版） |
 | `update_layer` | `{ projectId: string; layerId: string; patch: { name?: string; visible?: boolean; locked?: boolean; opacity?: number; blendMode?: BlendMode } }` | `DocumentState`（仅不透明度的补丁不提交历史；其余字段立即提交） |
 | `duplicate_layer` | `{ projectId: string; layerId: string }` | `DocumentState`（复制参数与修饰范围，插入原图层上方并提交一条历史） |
 | `delete_layer` | `{ projectId: string; layerId: string }` | `DocumentState` |
