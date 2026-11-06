@@ -12,9 +12,9 @@ use app_core::{
     ImportLutRequest, ImportPhotoRequest, ListAiJobsRequest, NoopEventSink, OpenProjectRequest,
     PhotoHqDenoiseRequest, PickWhiteBalanceRequest, ProjectIdRequest, ProviderConfigInput,
     ProviderKind, RenameCollectionRequest, RenameProjectRequest, RenderPreviewRequest,
-    SetCropRequest, SetLayerMaskRequest, SetProviderCredentialRequest, SubmitAiJobRequest,
-    SyncColorAdjustmentsRequest, UpdateLayerParamsRequest, UpdateLayerRequest, VersionIdRequest,
-    WatermarkOptions, WatermarkPosition,
+    RenderVersionPreviewRequest, SetCropRequest, SetLayerMaskRequest, SetProviderCredentialRequest,
+    SubmitAiJobRequest, SyncColorAdjustmentsRequest, UpdateLayerParamsRequest, UpdateLayerRequest,
+    VersionIdRequest, WatermarkOptions, WatermarkPosition,
 };
 use document::{
     ColorParams, CropRect, LayerMask, LayerPatch, MaskGradient, MaskGradientKind, MaskPoint,
@@ -347,6 +347,58 @@ fn named_versions_survive_a_restart_and_restore_as_undoable_steps() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].name, "暖调");
     assert_eq!(listed[0].id, version_id);
+}
+
+#[test]
+fn version_preview_renders_once_then_hits_its_own_cache() {
+    let app = TestApp::new();
+    let state = import(&app);
+    let project_id = state.id.clone();
+    let versions = app
+        .service
+        .create_version(CreateVersionRequest {
+            project_id: project_id.clone(),
+            name: "定稿".into(),
+        })
+        .unwrap();
+    let version_id = versions[0].id.clone();
+
+    let first = app
+        .service
+        .render_version_preview(RenderVersionPreviewRequest {
+            project_id: project_id.clone(),
+            version_id: version_id.clone(),
+            max_dimension: Some(320),
+        })
+        .unwrap();
+    assert!(!first.cached);
+    assert!(std::path::Path::new(&first.path).is_file());
+    assert!(first.width <= 320 && first.height <= 320);
+    assert!(
+        first.path.contains(&format!("version-{version_id}-d320")),
+        "version previews must not share the live render key: {}",
+        first.path
+    );
+
+    let second = app
+        .service
+        .render_version_preview(RenderVersionPreviewRequest {
+            project_id: project_id.clone(),
+            version_id: version_id.clone(),
+            max_dimension: Some(320),
+        })
+        .unwrap();
+    assert!(second.cached);
+    assert_eq!(second.path, first.path);
+
+    // Deleting the snapshot also drops its cached renders.
+    app.service
+        .delete_version(VersionIdRequest {
+            project_id,
+            version_id,
+        })
+        .unwrap();
+    assert!(!std::path::Path::new(&first.path).exists());
 }
 
 #[test]

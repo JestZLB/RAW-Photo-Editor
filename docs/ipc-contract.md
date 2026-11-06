@@ -343,7 +343,8 @@ interface DocumentState {
 | `list_versions` | `{ projectId: string }` | `VersionSummary[]`（按创建时间倒序，最多 200 条；不含文档 JSON） |
 | `create_version` | `{ projectId: string; name: string }` | `VersionSummary[]`（保存当前文档快照；名称裁剪空白后 1..60 字符，超限返回 `INVALID_ARGUMENT`；每项目超过 50 个时丢弃最旧） |
 | `restore_version` | `{ projectId: string; versionId: string }` | `DocumentState`（恢复快照；项目 id / 照片集 / 照片名保持不变，revision 前进，并写入一条可撤销历史「恢复版本：名称」） |
-| `delete_version` | `{ projectId: string; versionId: string }` | `VersionSummary[]`（按 projectId 限定，越权 id 视为不存在） |
+| `delete_version` | `{ projectId: string; versionId: string }` | `VersionSummary[]`（按 projectId 限定，越权 id 视为不存在；同时删除该快照的预览缓存） |
+| `render_version_preview` | `{ projectId: string; versionId: string; maxDimension?: number }` | `PreviewResult`（把快照文档渲染成 PNG 供并排对比；缓存键为 `version-{versionId}-d{dim}.png`，不参与 `render-*` 的轮换） |
 | `commit_changes` | `{ projectId: string; label: string }` | `DocumentState`（将本次连续修改合并为一条历史） |
 | `set_layer_mask` | `{ projectId: string; layerId: string; mask: LayerMask \| null }` | `DocumentState`（仅调色/人像图层；含画笔、自动肤色、渐变、反转、羽化与密度；每次调用提交一条历史） |
 | `pick_white_balance` | `{ projectId: string; x: number; y: number }` | `WhiteBalanceResult`（x/y 为原始源图归一化坐标，只读采样，不修改文档） |

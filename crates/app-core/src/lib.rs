@@ -30,8 +30,8 @@ pub use requests::{
     ImportLutRequest, ImportPhotoBytesRequest, ImportPhotoRequest, ListAiJobsRequest,
     MoveLayerRequest, OpenProjectRequest, PhotoHqDenoiseRequest, PickWhiteBalanceRequest,
     ProjectIdRequest, ProviderIdRequest, RenameCollectionRequest, RenameProjectRequest,
-    RenderPreviewRequest, SaveProviderConfigRequest, SetCropRequest, SetLayerMaskRequest,
-    SetProviderCredentialRequest, SubmitAiJobRequest, SubmitAiJobResponse,
+    RenderPreviewRequest, RenderVersionPreviewRequest, SaveProviderConfigRequest, SetCropRequest,
+    SetLayerMaskRequest, SetProviderCredentialRequest, SubmitAiJobRequest, SubmitAiJobResponse,
     SyncColorAdjustmentsRequest, TestProviderRequest, UpdateLayerParamsRequest, UpdateLayerRequest,
     VersionIdRequest,
 };

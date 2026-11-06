@@ -4,14 +4,20 @@
 //! A snapshot is a full document copy: restoring one never touches the original
 //! photo, and the restore itself becomes an undoable history entry.
 
+use std::time::Instant;
+
 use ::document::{now_rfc3339, ProjectDocument};
 use persistence::VersionRecord;
 use uuid::Uuid;
 
-use super::{parse_uuid, AppService, DEFAULT_PREVIEW_MAX, SOURCE_PREVIEW_MAX};
-use crate::dto::{DocumentState, VersionSummary};
+use super::{
+    parse_uuid, AppService, DEFAULT_PREVIEW_MAX, MAX_PREVIEW_DIMENSION, SOURCE_PREVIEW_MAX,
+};
+use crate::dto::{DocumentState, PreviewResult, VersionSummary};
 use crate::error::ApiError;
-use crate::requests::{CreateVersionRequest, ProjectIdRequest, VersionIdRequest};
+use crate::requests::{
+    CreateVersionRequest, ProjectIdRequest, RenderVersionPreviewRequest, VersionIdRequest,
+};
 
 /// A manual snapshot is megabytes each; the oldest are dropped beyond this.
 const MAX_VERSIONS_PER_PROJECT: usize = 50;
@@ -113,7 +119,41 @@ impl AppService {
         let project_id = parse_uuid(&request.project_id, "project")?;
         let version_id = parse_uuid(&request.version_id, "version")?;
         self.db.delete_version(project_id, version_id)?;
+        self.assets.delete_version_previews(project_id, version_id);
         self.version_list(project_id)
+    }
+
+    /// Render a snapshot so the UI can compare it with the current edit.
+    ///
+    /// The snapshot is immutable, so the cache file is valid for as long as the
+    /// version row exists; it uses a `version-` prefix and is therefore not
+    /// touched by the live-preview rotation.
+    pub fn render_version_preview(
+        &self,
+        request: RenderVersionPreviewRequest,
+    ) -> Result<PreviewResult, ApiError> {
+        let started = Instant::now();
+        let project_id = parse_uuid(&request.project_id, "project")?;
+        let version_id = parse_uuid(&request.version_id, "version")?;
+        let max_dimension = request.max_dimension.unwrap_or(DEFAULT_PREVIEW_MAX);
+        if max_dimension == 0 || max_dimension > MAX_PREVIEW_DIMENSION {
+            return Err(ApiError::invalid_argument(
+                format!("invalid preview max dimension: {max_dimension}"),
+                "预览尺寸无效。",
+            ));
+        }
+        let record = self
+            .db
+            .get_version(version_id)?
+            .ok_or_else(version_not_found)?;
+        if record.project_id != project_id {
+            return Err(version_not_found());
+        }
+        let document: ProjectDocument = serde_json::from_str(&record.document_json)?;
+        let cache_path = self
+            .assets
+            .version_preview_path(project_id, version_id, max_dimension);
+        self.render_preview_into(project_id, &document, max_dimension, &cache_path, started)
     }
 
     fn version_list(&self, project_id: Uuid) -> Result<Vec<VersionSummary>, ApiError> {

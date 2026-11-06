@@ -157,6 +157,37 @@ impl AssetStore {
             .join(format!("render-r{revision}-d{max_dimension}{suffix}.png"))
     }
 
+    /// Cached render of a named snapshot. Snapshots never change, so the file is
+    /// valid for as long as the version row exists; `version-` keeps it out of
+    /// the `render-*` rotation that prunes live previews.
+    pub fn version_preview_path(
+        &self,
+        project_id: Uuid,
+        version_id: Uuid,
+        max_dimension: u32,
+    ) -> PathBuf {
+        self.previews_dir(project_id)
+            .join(format!("version-{version_id}-d{max_dimension}.png"))
+    }
+
+    /// Remove every cached render of one snapshot (all dimensions).
+    pub fn delete_version_previews(&self, project_id: Uuid, version_id: Uuid) -> usize {
+        let prefix = format!("version-{version_id}-");
+        let Ok(entries) = std::fs::read_dir(self.previews_dir(project_id)) else {
+            return 0;
+        };
+        let mut removed = 0;
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with(&prefix)
+                && std::fs::remove_file(entry.path()).is_ok()
+            {
+                removed += 1;
+            }
+        }
+        removed
+    }
+
     pub fn ai_preview_path(&self, project_id: Uuid, asset_id: Uuid, max_dimension: u32) -> PathBuf {
         self.previews_dir(project_id)
             .join(format!("ai-{asset_id}-{max_dimension}.png"))
