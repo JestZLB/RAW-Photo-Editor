@@ -88,6 +88,7 @@ pub fn run() {
             commands::create_version,
             commands::restore_version,
             commands::delete_version,
+            commands::render_version_preview,
         ])
         .run(tauri::generate_context!());
 

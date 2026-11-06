@@ -370,9 +370,31 @@ impl AppService {
             max_dimension,
             request.ignore_crop,
         );
+        let result =
+            self.render_preview_into(project_id, &document, max_dimension, &cache_path, started)?;
+        if !result.cached {
+            let _ = self.assets.prune_render_previews(
+                project_id,
+                RENDER_PREVIEW_KEEP,
+                Some(document.revision),
+            );
+        }
+        Ok(result)
+    }
 
+    /// Render `document` into `cache_path`, reusing the file when it is still
+    /// readable. Shared by live previews and version snapshots: the caller owns
+    /// cache naming and pruning so each can use its own key.
+    pub(crate) fn render_preview_into(
+        &self,
+        project_id: Uuid,
+        document: &ProjectDocument,
+        max_dimension: u32,
+        cache_path: &Path,
+        started: Instant,
+    ) -> Result<PreviewResult, ApiError> {
         if cache_path.exists() {
-            if let Ok((width, height)) = probe_image_dimensions(&cache_path) {
+            if let Ok((width, height)) = probe_image_dimensions(cache_path) {
                 return Ok(PreviewResult {
                     path: cache_path.to_string_lossy().to_string(),
                     width,
@@ -381,13 +403,13 @@ impl AppService {
                     duration_ms: started.elapsed().as_millis() as u64,
                     cached: true,
                     backend: "cache".to_string(),
-                    histogram: self.preview_histogram_cached(&cache_path),
+                    histogram: self.preview_histogram_cached(cache_path),
                 });
             }
         }
 
         let (preview_document, source) =
-            self.preview_render_input(project_id, &document, max_dimension)?;
+            self.preview_render_input(project_id, document, max_dimension)?;
         let resolver = DbAssetResolver {
             db: &self.db,
             luts: &self.luts,
@@ -417,14 +439,9 @@ impl AppService {
             (rendered.to_srgb8(), "cpu")
         };
         let histogram = preview_histogram(&encoded);
-        self.store_histogram(&cache_path, &histogram);
+        self.store_histogram(cache_path, &histogram);
         self.assets.ensure_project_dirs(project_id)?;
-        encode_atomic(&cache_path, &encoded, OutputFormat::Png, 100)?;
-        let _ = self.assets.prune_render_previews(
-            project_id,
-            RENDER_PREVIEW_KEEP,
-            Some(document.revision),
-        );
+        encode_atomic(cache_path, &encoded, OutputFormat::Png, 100)?;
         Ok(PreviewResult {
             path: cache_path.to_string_lossy().to_string(),
             width: encoded.width,

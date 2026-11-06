@@ -40,6 +40,15 @@ pub struct VersionIdRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RenderVersionPreviewRequest {
+    pub project_id: String,
+    pub version_id: String,
+    #[serde(default)]
+    pub max_dimension: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenameProjectRequest {
     pub project_id: String,
     pub name: String,
