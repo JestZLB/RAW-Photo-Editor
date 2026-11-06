@@ -67,7 +67,7 @@ import {
   portraitGeometryForFace,
 } from "../lib/face";
 import { defaultSelection, selectedOrKind, topLayerOfKind } from "../lib/layers";
-import { normalizeMask, regionLabel } from "../lib/mask";
+import { maskHasContent, normalizeMask, regionLabel } from "../lib/mask";
 import {
   COLOR_PRESETS,
   DEFAULT_COLOR,
@@ -423,6 +423,14 @@ export interface EditorState {
   retrySave: () => Promise<void>;
   commitPortrait: (layerId: string, params: PortraitParams, label: string) => Promise<void>;
   commitColor: (layerId: string, params: ColorParams, label: string) => Promise<void>;
+  /**
+   * One-click look on top of an existing mask: a new colour layer reusing the
+   * selected layer's mask (raster included) and a preset, committed as one step.
+   */
+  applyLook: (
+    layerId: string,
+    look: "brightenSubject" | "desaturateBackground",
+  ) => Promise<void>;
   applyPortraitPreset: (presetId: PortraitPresetId) => Promise<void>;
   applyColorPreset: (presetId: ColorPresetId) => Promise<void>;
   setPortraitEffect: (layerId: string, key: PortraitEffectKey, enabled: boolean) => Promise<void>;
@@ -3353,6 +3361,44 @@ export const useEditorStore = create<EditorState>()((set, get) => {
 
     commitEdit: async (label) => {
       await finishEdit(label);
+    },
+
+    applyLook: async (layerId, look) => {
+      const doc = get().doc;
+      const source = doc?.layers.find((item) => item.id === layerId);
+      if (!doc) return;
+      if (!source?.mask || !maskHasContent(source.mask)) {
+        toastInfo(
+          "先给这个图层加蒙版或智能蒙版，再套用一键效果。",
+          "没有可用的蒙版",
+        );
+        return;
+      }
+      // "Background" is the inverse of a subject mask; the copy owns its own
+      // inverted flag so the source layer stays untouched.
+      const mask =
+        look === "desaturateBackground"
+          ? { ...source.mask, inverted: !(source.mask.inverted ?? false) }
+          : { ...source.mask };
+      const created = await get().addLayer("color", {
+        name: look === "brightenSubject" ? "主体提亮" : "背景去色",
+        mask,
+      });
+      if (!created) return;
+      const params =
+        look === "brightenSubject"
+          ? { ...DEFAULT_COLOR, exposure: 0.35 }
+          : { ...DEFAULT_COLOR, saturation: -100 };
+      get().editColor(created.id, params);
+      await get().commitEdit(
+        look === "brightenSubject" ? "主体提亮" : "背景去色",
+      );
+      toastSuccess(
+        look === "brightenSubject"
+          ? "已新建「主体提亮」图层，可在它上面继续调曝光。"
+          : "已新建「背景去色」图层（蒙版已反相），可继续调饱和度。",
+        "已应用",
+      );
     },
 
     flushPendingEdits: async () => settlePendingEdits(),
