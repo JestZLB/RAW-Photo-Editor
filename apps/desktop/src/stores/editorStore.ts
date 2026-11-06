@@ -79,6 +79,7 @@ import {
   type PortraitPresetId,
 } from "../lib/params";
 import { createEditQueue } from "./editQueue";
+import { createPreviewScheduler } from "./previewScheduler";
 import { useSettingsStore } from "./settingsStore";
 import { toastError, toastInfo, toastSuccess } from "./toastStore";
 
@@ -117,13 +118,6 @@ export interface ImportBatchState {
 }
 
 export /**
- * Longest edge used while a slider is dragged. 900px keeps a full-frame portrait
- * responsive on CPU while still looking sharp at fit-to-window zoom; the
- * configured size (1200/1600/2048) is restored as soon as the drag settles.
- */
-const INTERACTIVE_PREVIEW_MAX = 900;
-/** Quiet period after the last live edit before the full-size render starts. */
-const INTERACTIVE_SETTLE_MS = 420;
 /**
  * Quiet period after the last write settles before the status bar says "saved".
  * Without it, every debounce tick during a drag would flash saved/saving.
@@ -444,17 +438,6 @@ export interface EditorState {
 let bootstrapPromise: Promise<void> | null = null;
 
 export const useEditorStore = create<EditorState>()((set, get) => {
-  let previewTimer: ReturnType<typeof setTimeout> | null = null;
-  let previewRunning = false;
-  let previewDirty = false;
-  let previewEpoch = 0;
-  /**
-   * True while a slider drag is being previewed. The canvas renders a smaller
-   * proxy during the drag and always returns to the configured size afterwards,
-   * including when the drag ends without a commit.
-   */
-  let interactivePreview = false;
-  let interactiveTimer: ReturnType<typeof setTimeout> | null = null;
   let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   /** Document writes currently in flight, counted by the tracked API wrapper. */
   let pendingWrites = 0;
@@ -622,96 +605,40 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     });
   }
 
+  // Preview scheduling lives in its own module. These wrappers keep the ~50
+  // call sites in this file unchanged.
+  const previewScheduler = createPreviewScheduler({
+    snapshot: () => ({
+      api: get().api,
+      doc: get().doc,
+      previewFullFrame: get().previewFullFrame,
+    }),
+    setLoading: (loading) => set({ previewLoading: loading }),
+    setPreview: (result) =>
+      set({
+        preview: {
+          path: result.path,
+          width: result.width,
+          height: result.height,
+          revision: result.revision,
+          fromSource: false,
+          backend: result.backend,
+          histogram: result.histogram,
+        },
+      }),
+    onError: errorToast,
+  });
+
   function schedulePreview(delay = 100): void {
-    previewDirty = true;
-    previewEpoch += 1;
-    if (previewRunning || previewTimer !== null) return;
-    previewTimer = setTimeout(() => {
-      previewTimer = null;
-      void runPreview(previewEpoch);
-    }, delay);
+    previewScheduler.schedule(delay);
   }
 
-  /**
-   * A live edit started. Previews drop to the interactive tier so the canvas can
-   * follow the pointer; a settle timer guarantees the full-size render even when
-   * no commit follows (for example a drag that ends on the same value).
-   */
   function noteInteractiveEdit(): void {
-    interactivePreview = true;
-    if (interactiveTimer !== null) clearTimeout(interactiveTimer);
-    interactiveTimer = setTimeout(() => {
-      interactiveTimer = null;
-      if (!interactivePreview) return;
-      interactivePreview = false;
-      schedulePreview(30);
-    }, INTERACTIVE_SETTLE_MS);
+    previewScheduler.noteInteractiveEdit();
   }
 
-  /** Leave the interactive tier immediately, e.g. when an edit is committed. */
   function endInteractivePreview(): void {
-    if (interactiveTimer !== null) {
-      clearTimeout(interactiveTimer);
-      interactiveTimer = null;
-    }
-    interactivePreview = false;
-  }
-
-  async function runPreview(epoch: number): Promise<void> {
-    const api = get().api;
-    const doc = get().doc;
-    if (!api || !doc || !doc.source) {
-      previewDirty = false;
-      return;
-    }
-    previewRunning = true;
-    previewDirty = false;
-    set({ previewLoading: true });
-    const projectId = doc.id;
-    const requestRevision = doc.revision;
-    try {
-      const settings = useSettingsStore.getState();
-      const result = await api.renderPreview({
-        projectId,
-        maxDimension: interactivePreview
-          ? Math.min(settings.previewMaxDimension, INTERACTIVE_PREVIEW_MAX)
-          : settings.previewMaxDimension,
-        ignoreCrop: get().previewFullFrame,
-      });
-      const current = get().doc;
-      const stillSameProject = current?.id === projectId;
-      const stale =
-        epoch !== previewEpoch ||
-        !stillSameProject ||
-        result.revision < requestRevision ||
-        result.revision < (current?.revision ?? 0);
-      if (!stale && current) {
-        set({
-          preview: {
-            path: result.path,
-            width: result.width,
-            height: result.height,
-            revision: result.revision,
-            fromSource: false,
-            backend: result.backend,
-            histogram: result.histogram,
-          },
-        });
-      } else if (stillSameProject) {
-        previewDirty = true;
-      }
-    } catch (error) {
-      if (get().doc?.id === projectId) {
-        errorToast(error, "预览更新没有完成，画面仍保留上一次的结果。");
-      }
-    } finally {
-      previewRunning = false;
-      if (previewDirty) {
-        schedulePreview(90);
-      } else {
-        set({ previewLoading: false });
-      }
-    }
+    previewScheduler.endInteractive();
   }
 
   // High-frequency edits are coalesced and written by a separate subsystem.
