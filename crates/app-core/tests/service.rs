@@ -760,6 +760,95 @@ fn blur_layer_smooths_only_inside_its_mask() {
     );
 }
 
+/// End-to-end with a real (hand-built) ONNX model: capability probe -> model
+/// load -> inference on the analysis image -> raster mask asset -> render.
+/// The probe is a channel mean, not a segmentation model, so this validates
+/// plumbing rather than semantic quality (ADR-015).
+#[test]
+fn onnx_probe_drives_the_whole_segmentation_pipeline() {
+    let model_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../segmentation/tests/fixtures/channel_mean.onnx");
+    assert!(model_path.is_file(), "run make_probe_model.py first");
+    let path = model_path.to_string_lossy().to_string();
+
+    let app = TestApp::new();
+    let capability = app
+        .service
+        .check_segmentation_capability(SegmentationCapabilityRequest {
+            model_path: Some(path.clone()),
+        });
+    assert!(
+        capability.available,
+        "probe model should pass: {:?}",
+        capability.reason
+    );
+
+    let state = import(&app);
+    let state = app
+        .service
+        .add_layer(AddLayerRequest {
+            project_id: state.id.clone(),
+            kind: AddLayerKind::Blur,
+            name: None,
+            portrait: None,
+            mask: None,
+        })
+        .unwrap();
+    let project_id = state.id.clone();
+    let layer_id = state.layers.last().unwrap().id.clone();
+
+    let updated = app
+        .service
+        .run_segmentation_mask(SegmentMaskRequest {
+            project_id: project_id.clone(),
+            layer_id: layer_id.clone(),
+            model_path: path,
+            threshold: None,
+            softness: None,
+        })
+        .unwrap();
+    let raster = updated
+        .layers
+        .iter()
+        .find(|layer| layer.id == layer_id)
+        .and_then(|layer| layer.mask.as_ref())
+        .and_then(|mask| mask.raster.as_ref())
+        .expect("segmentation attaches a raster mask")
+        .clone();
+    assert_eq!(raster.source, "onnx:foreground");
+    assert_ne!(raster.asset_id, Uuid::nil());
+
+    // The mask PNG was actually written and decodes back to coverage.
+    fn find_file(dir: &std::path::Path, name: &str) -> Option<std::path::PathBuf> {
+        for entry in std::fs::read_dir(dir).ok()?.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(found) = find_file(&path, name) {
+                    return Some(found);
+                }
+            } else if path.file_name().and_then(|part| part.to_str()) == Some(name) {
+                return Some(path);
+            }
+        }
+        None
+    }
+    let mask_path = find_file(app.dir.path(), &format!("mask-{}.png", raster.asset_id))
+        .expect("mask PNG exists on disk");
+    let decoded = image_core::decode_image_from_path(&mask_path).unwrap();
+    assert!(decoded.width > 0 && decoded.height > 0);
+
+    // And the document still renders with that mask in place.
+    let preview = app
+        .service
+        .render_preview(RenderPreviewRequest {
+            project_id: project_id.clone(),
+            max_dimension: Some(320),
+            ignore_crop: false,
+        })
+        .unwrap();
+    assert!(std::path::Path::new(&preview.path).is_file());
+}
+
 #[test]
 fn slider_params_commit_once_and_undo_redo_are_monotonic() {
     let app = TestApp::new();
