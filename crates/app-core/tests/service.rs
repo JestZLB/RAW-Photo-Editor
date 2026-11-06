@@ -6,15 +6,17 @@ use std::time::{Duration, Instant};
 use app_core::{
     AddLayerKind, AddLayerRequest, AiCapabilityRequest, AiDenoiseRequest, AiJobInfo,
     AiJobOperation, AiJobStatus, ApiError, AppPaths, AppService, ApplyAiResultRequest,
-    CancelExportRequest, CommitChangesRequest, CreateProjectRequest, CreateVersionRequest,
-    DeleteLayerRequest, DuplicateLayerRequest, EventSink, ExportBitDepth, ExportColorSpace,
-    ExportImageFormat, ExportImageRequest, ExportMetadata, ExportOptions, ExportProgress,
-    ImportLutRequest, ImportPhotoRequest, ListAiJobsRequest, NoopEventSink, OpenProjectRequest,
-    PhotoHqDenoiseRequest, PickWhiteBalanceRequest, ProjectIdRequest, ProviderConfigInput,
-    ProviderKind, RenameCollectionRequest, RenameProjectRequest, RenderPreviewRequest,
-    RenderVersionPreviewRequest, SetCropRequest, SetLayerMaskRequest, SetProviderCredentialRequest,
-    SubmitAiJobRequest, SyncColorAdjustmentsRequest, UpdateLayerParamsRequest, UpdateLayerRequest,
-    VersionIdRequest, WatermarkOptions, WatermarkPosition,
+    CancelExportRequest, ClearRasterMaskRequest, CommitChangesRequest, CreateProjectRequest,
+    CreateVersionRequest, DeleteLayerRequest, DuplicateLayerRequest, EventSink, ExportBitDepth,
+    ExportColorSpace, ExportImageFormat, ExportImageRequest, ExportMetadata, ExportOptions,
+    ExportProgress, ImportLutRequest, ImportPhotoRequest, ListAiJobsRequest, NoopEventSink,
+    OpenProjectRequest, PhotoHqDenoiseRequest, PickWhiteBalanceRequest, ProjectIdRequest,
+    ProviderConfigInput, ProviderKind, RenameCollectionRequest, RenameProjectRequest,
+    RenderPreviewRequest, RenderVersionPreviewRequest, SegmentMaskRequest,
+    SegmentationCapabilityRequest, SetCropRequest, SetLayerMaskRequest,
+    SetProviderCredentialRequest, SubmitAiJobRequest, SyncColorAdjustmentsRequest,
+    UpdateLayerParamsRequest, UpdateLayerRequest, VersionIdRequest, WatermarkOptions,
+    WatermarkPosition,
 };
 use document::{
     ColorParams, CropRect, LayerMask, LayerPatch, MaskGradient, MaskGradientKind, MaskPoint,
@@ -483,6 +485,8 @@ fn raster_mask_confines_an_adjustment_to_the_selected_half() {
             Uuid::parse_str(&layer_id).unwrap(),
             &coverage,
             "test",
+            0.5,
+            0.0,
         )
         .unwrap();
     let layer = masked
@@ -544,6 +548,80 @@ fn raster_mask_confines_an_adjustment_to_the_selected_half() {
         .and_then(|mask| mask.raster.as_ref())
         .expect("brush edits keep the raster mask");
     assert_eq!(kept.asset_id, raster.asset_id);
+
+    // Clearing the raster keeps the brush stroke (the mask is not empty).
+    let cleared = app
+        .service
+        .clear_raster_mask(ClearRasterMaskRequest {
+            project_id: project_id.clone(),
+            layer_id: layer_id.clone(),
+        })
+        .unwrap();
+    let leftover = cleared
+        .layers
+        .iter()
+        .find(|layer| layer.id == layer_id)
+        .and_then(|layer| layer.mask.as_ref())
+        .expect("brush coverage must survive clearing the raster");
+    assert!(leftover.raster.is_none());
+    assert!(!leftover.strokes.is_empty());
+}
+
+/// No weights ship with the app, so the unavailable paths are the ones that must
+/// be trustworthy: an unconfigured or broken model has to say so, never hang or
+/// produce an empty mask.
+#[test]
+fn segmentation_reports_unconfigured_and_broken_models() {
+    let app = TestApp::new();
+
+    let unconfigured = app
+        .service
+        .check_segmentation_capability(SegmentationCapabilityRequest { model_path: None });
+    assert!(!unconfigured.available);
+    assert!(unconfigured.reason.unwrap().contains("尚未选择"));
+
+    let missing_path = app.dir.path().join("absent.onnx");
+    let missing = app
+        .service
+        .check_segmentation_capability(SegmentationCapabilityRequest {
+            model_path: Some(missing_path.to_string_lossy().to_string()),
+        });
+    assert!(!missing.available);
+    assert!(missing.reason.unwrap().contains("不存在"));
+
+    // A file that exists but is not an ONNX model must fail the probe.
+    let broken_path = app.dir.path().join("broken.onnx");
+    std::fs::write(&broken_path, b"definitely not a model").unwrap();
+    let broken = app
+        .service
+        .check_segmentation_capability(SegmentationCapabilityRequest {
+            model_path: Some(broken_path.to_string_lossy().to_string()),
+        });
+    assert!(!broken.available);
+    assert!(broken.reason.is_some());
+
+    let state = import(&app);
+    let state = app
+        .service
+        .add_layer(AddLayerRequest {
+            project_id: state.id.clone(),
+            kind: AddLayerKind::Color,
+            name: None,
+            portrait: None,
+            mask: None,
+        })
+        .unwrap();
+    let error = app
+        .service
+        .run_segmentation_mask(SegmentMaskRequest {
+            project_id: state.id.clone(),
+            layer_id: state.layers.last().unwrap().id.clone(),
+            model_path: missing_path.to_string_lossy().to_string(),
+            threshold: None,
+            softness: None,
+        })
+        .unwrap_err();
+    assert_eq!(error.code, "SEGMENTATION_MODEL_INVALID");
 }
 
 #[test]

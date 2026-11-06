@@ -89,6 +89,9 @@ pub fn run() {
             commands::restore_version,
             commands::delete_version,
             commands::render_version_preview,
+            commands::check_segmentation_capability,
+            commands::run_segmentation_mask,
+            commands::clear_raster_mask,
         ])
         .run(tauri::generate_context!());
 

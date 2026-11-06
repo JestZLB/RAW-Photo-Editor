@@ -656,6 +656,8 @@ impl AppService {
         layer_id: Uuid,
         coverage: &render_engine::RasterCoverage,
         source: &str,
+        threshold: f32,
+        softness: f32,
     ) -> Result<DocumentState, ApiError> {
         self.ensure_session(project_id)?;
 
@@ -712,14 +714,52 @@ impl AppService {
                     let mut mask = layer.mask.clone().unwrap_or_default();
                     mask.raster = Some(::document::MaskRaster {
                         asset_id,
-                        threshold: 0.5,
-                        softness: 0.15,
+                        threshold,
+                        softness,
                         source: source.chars().take(48).collect(),
                     });
                     layer.mask = Some(mask.sanitized());
                 }
             });
             project.session.commit("智能蒙版");
+            project.request_save();
+            Ok(self.document_state(project_id, &project.session))
+        })
+    }
+
+    /// Drop the raster coverage while keeping the brush/gradient part of the
+    /// mask. Exposed separately because `set_layer_mask` deliberately preserves
+    /// raster data when the incoming mask omits it.
+    pub fn clear_raster_mask(
+        &self,
+        request: crate::requests::ClearRasterMaskRequest,
+    ) -> Result<DocumentState, ApiError> {
+        let project_id = parse_uuid(&request.project_id, "project")?;
+        let layer_id = parse_uuid(&request.layer_id, "layer")?;
+        self.session(project_id, |project| {
+            let has_raster = project
+                .session
+                .document()
+                .layer(layer_id)
+                .and_then(|layer| layer.mask.as_ref())
+                .and_then(|mask| mask.raster.as_ref())
+                .is_some();
+            if !has_raster {
+                return Ok(self.document_state(project_id, &project.session));
+            }
+            project.session.mutate(|document| {
+                if let Some(layer) = document.layer_mut(layer_id) {
+                    if let Some(mask) = layer.mask.as_mut() {
+                        mask.raster = None;
+                        layer.mask = if mask.is_empty() {
+                            None
+                        } else {
+                            Some(mask.clone())
+                        };
+                    }
+                }
+            });
+            project.session.commit("移除智能蒙版");
             project.request_save();
             Ok(self.document_state(project_id, &project.session))
         })
