@@ -4,6 +4,10 @@
 
 ![Luma Studio 编辑界面](screenshots/editor.png)
 
+> `screenshots/` 下的 PNG 由 [Git LFS](https://git-lfs.com/) 托管（见 `.gitattributes`）。
+> 克隆前请先安装 Git LFS 并执行 `git lfs install`；若已克隆但看到的是一段 131 字节的指针文本，
+> 运行 `git lfs pull` 即可取回真实图片。GitHub 网页会自动渲染 LFS 图片，本地预览才需要这一步。
+
 当前状态是**可运行的架构基线**，不是完成品。所有未接入的模型与后端都会在界面和文档中如实标注，不会伪装成已实现能力。
 
 ## 快速开始
