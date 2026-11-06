@@ -57,7 +57,7 @@ import {
   pickImageFile,
   pickImageFiles,
 } from "../lib/file";
-import { extensionForFormat, safeFileStem } from "../lib/export";
+import { extensionForFormat, renderExportStem } from "../lib/export";
 import { buildWatermarkOptions } from "../lib/watermark";
 import {
   bestFaceIndex,
@@ -3028,11 +3028,19 @@ export const useEditorStore = create<EditorState>()((set, get) => {
             : null,
         }));
         try {
-          const base = safeFileStem(project.name) || "luma-photo";
-          let stem = `${base}-luma`;
+          // Same template as the single-photo dialog; `index` keeps batches
+          // sortable when several photos share a name.
+          const base = renderExportStem(settings.exportNameTemplate, {
+            name: project.name,
+            collection: project.collectionName,
+            width: project.width,
+            height: project.height,
+            index: done + 1,
+          });
+          let stem = base;
           let suffix = 2;
           while (usedStems.has(stem.toLowerCase())) {
-            stem = `${base}-${suffix}-luma`;
+            stem = `${base}-${suffix}`;
             suffix += 1;
           }
           usedStems.add(stem.toLowerCase());

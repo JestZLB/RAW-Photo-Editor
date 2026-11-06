@@ -590,6 +590,22 @@ export function SettingsDialog() {
             <p className="field-hint">
               比例预设会在当前裁剪范围内居中裁切，不拉伸；自定义尺寸比例不一致时同样居中裁切。
             </p>
+
+            <div className="settings-section__label">导出文件名</div>
+            <input
+              className="input"
+              value={settings.exportNameTemplate}
+              maxLength={120}
+              spellCheck={false}
+              aria-label="导出文件名模板"
+              onChange={(event) =>
+                settings.update({ exportNameTemplate: event.currentTarget.value })
+              }
+            />
+            <p className="field-hint">
+              可用占位符：{"{name} {collection} {date} {time} {index} {width} {height}"}
+              ；扩展名按导出格式自动追加，批量导出会自动去重。
+            </p>
           </section>
 
           <section className="settings-section">

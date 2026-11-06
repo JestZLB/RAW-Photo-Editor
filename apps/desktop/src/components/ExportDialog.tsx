@@ -14,7 +14,7 @@ import {
   EXPORT_SIZE_OPTIONS,
   extensionForFormat,
   outputDimensions as computeOutputDimensions,
-  safeFileStem,
+  renderExportStem,
   type ExportSize,
 } from "../lib/export";
 import { formatDimensions } from "../lib/format";
@@ -139,11 +139,18 @@ export function ExportDialog() {
   if (!open || !doc?.source) return null;
 
   const tiffAvailable = mode === "tauri";
-  const baseName = safeFileStem(doc.name) || "luma-photo";
-  const fileName = `${baseName}-luma.${extensionForFormat(format)}`;
   const baseWidth = doc.crop?.width || doc.source.width;
   const baseHeight = doc.crop?.height || doc.source.height;
   const out = computeOutputDimensions(baseWidth, baseHeight, size, customWidth, customHeight);
+  // Width/height tokens describe the exported pixels, so the stem is rendered
+  // after the dimensions are known.
+  const stem = renderExportStem(useSettingsStore.getState().exportNameTemplate, {
+    name: doc.name,
+    collection: doc.collectionName,
+    width: out.width,
+    height: out.height,
+  });
+  const fileName = `${stem}.${extensionForFormat(format)}`;
   const customInvalid =
     size === "custom" &&
     (out.width < 16 || out.height < 16 || out.width * out.height > MAX_OUTPUT_PIXELS);

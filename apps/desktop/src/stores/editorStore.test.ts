@@ -118,7 +118,7 @@ describe("batch project export", () => {
     await useEditorStore.getState().exportSelectedProjects();
     expect(calls.map((call) => call.options.path)).toEqual([
       "C:\\exports/batch-a-luma.jpg",
-      "C:\\exports/batch-a-2-luma.jpg",
+      "C:\\exports/batch-a-luma-2.jpg",
     ]);
   });
 });

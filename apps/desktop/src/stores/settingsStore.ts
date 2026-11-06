@@ -5,7 +5,11 @@ import type {
   ExportFormat,
   ExportMetadata,
 } from "../api/types";
-import { EXPORT_SIZE_PRESETS, type ExportSize } from "../lib/export";
+import {
+  DEFAULT_EXPORT_NAME_TEMPLATE,
+  EXPORT_SIZE_PRESETS,
+  type ExportSize,
+} from "../lib/export";
 
 export const PREVIEW_MAX_DIMENSIONS = [1200, 1600, 2048] as const;
 export type PreviewMaxDimension = (typeof PREVIEW_MAX_DIMENSIONS)[number];
@@ -50,6 +54,8 @@ export interface AppSettings {
   portraitIntensity: PortraitIntensity;
   theme: ThemeId;
   reduceMotion: boolean;
+  /** Filename template for exports, e.g. `{name}-{date}`. */
+  exportNameTemplate: string;
   /** Absolute `.onnx` path chosen in settings; only used by the desktop app. */
   aiDenoiseModelPath: string | null;
   /** User-supplied segmentation model; the app ships no weights. */
@@ -86,6 +92,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   portraitIntensity: 78,
   theme: "ink",
   reduceMotion: false,
+  exportNameTemplate: DEFAULT_EXPORT_NAME_TEMPLATE,
   aiDenoiseModelPath: null,
   segmentationModelPath: null,
   aiDenoiseStrength: 100,
@@ -116,6 +123,10 @@ export function sanitizeSettings(input: unknown): AppSettings {
     typeof value === "number" && Number.isFinite(value)
       ? Math.min(20000, Math.max(16, Math.round(value)))
       : fallback;
+  const exportNameTemplate =
+    typeof raw.exportNameTemplate === "string" && raw.exportNameTemplate.trim()
+      ? raw.exportNameTemplate.trim().slice(0, 120)
+      : DEFAULT_EXPORT_NAME_TEMPLATE;
   const denoisePath =
     typeof raw.aiDenoiseModelPath === "string" && raw.aiDenoiseModelPath.trim()
       ? raw.aiDenoiseModelPath.trim()
@@ -178,6 +189,7 @@ export function sanitizeSettings(input: unknown): AppSettings {
       typeof raw.reduceMotion === "boolean"
         ? raw.reduceMotion
         : DEFAULT_SETTINGS.reduceMotion,
+    exportNameTemplate,
     aiDenoiseModelPath: denoisePath,
     segmentationModelPath: segmentationPath,
     aiDenoiseStrength: denoiseStrength,
