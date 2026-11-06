@@ -903,6 +903,44 @@ pub struct MaskGradient {
     pub end: MaskPoint,
 }
 
+/// Pixel mask produced outside the vector tools — currently a segmentation
+/// model. The pixels live in a project asset (8-bit grayscale PNG) so the
+/// document JSON stays small; only the reference and its sampling parameters
+/// are stored here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MaskRaster {
+    pub asset_id: Uuid,
+    /// Coverage above this value is kept, then re-normalized to 0..1.
+    pub threshold: f32,
+    /// Softness of the threshold transition, in coverage units.
+    pub softness: f32,
+    /// Free-form provider label for diagnostics ("onnx:subject").
+    pub source: String,
+}
+
+impl Default for MaskRaster {
+    fn default() -> Self {
+        Self {
+            asset_id: Uuid::nil(),
+            threshold: 0.5,
+            softness: 0.15,
+            source: String::new(),
+        }
+    }
+}
+
+impl MaskRaster {
+    pub fn sanitized(&self) -> Self {
+        Self {
+            asset_id: self.asset_id,
+            threshold: clamp_finite(self.threshold, 0.0, 1.0, 0.5),
+            softness: clamp_finite(self.softness, 0.0, 0.499, 0.15),
+            source: self.source.chars().take(48).collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LayerMask {
@@ -923,6 +961,10 @@ pub struct LayerMask {
     pub feather: f32,
     /// Overall mask strength, 0..1.
     pub density: f32,
+    /// Pixel coverage from a segmentation provider, combined with the vector
+    /// sources by taking the maximum.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raster: Option<MaskRaster>,
 }
 
 impl Default for LayerMask {
@@ -935,6 +977,7 @@ impl Default for LayerMask {
             inverted: false,
             feather: 0.0,
             density: 1.0,
+            raster: None,
         }
     }
 }
@@ -945,6 +988,17 @@ impl LayerMask {
             && !self.auto_skin
             && self.gradient.is_none()
             && self.regions.is_empty()
+            && self.raster.is_none()
+    }
+
+    /// Clamp the fields a provider or a hand-edited document could push out of
+    /// range. Vector data is already clamped where it is created.
+    pub fn sanitized(&self) -> Self {
+        let mut next = self.clone();
+        next.feather = clamp_finite(next.feather, 0.0, 1.0, 0.0);
+        next.density = clamp_finite(next.density, 0.0, 1.0, 1.0);
+        next.raster = next.raster.as_ref().map(MaskRaster::sanitized);
+        next
     }
 }
 
@@ -2100,5 +2154,40 @@ mod tests {
         });
         layer.sanitize();
         assert_eq!(layer.opacity, 1.0);
+    }
+
+    #[test]
+    fn masks_written_before_raster_support_still_load() {
+        // Old documents have no `raster` key; the field must default to None so
+        // opening them keeps working.
+        let json =
+            r#"{"strokes":[],"autoSkin":false,"inverted":false,"feather":0.0,"density":1.0}"#;
+        let mask: LayerMask = serde_json::from_str(json).unwrap();
+        assert!(mask.raster.is_none());
+        assert!(mask.is_empty());
+    }
+
+    #[test]
+    fn raster_mask_round_trips_and_clamps_provider_values() {
+        let mask = LayerMask {
+            raster: Some(MaskRaster {
+                asset_id: Uuid::new_v4(),
+                threshold: 3.0,
+                softness: -2.0,
+                source: "x".repeat(80),
+            }),
+            ..LayerMask::default()
+        };
+        assert!(!mask.is_empty());
+
+        let sanitized = mask.sanitized();
+        let raster = sanitized.raster.as_ref().unwrap();
+        assert_eq!(raster.threshold, 1.0);
+        assert_eq!(raster.softness, 0.0);
+        assert_eq!(raster.source.chars().count(), 48);
+
+        let json = serde_json::to_string(&sanitized).unwrap();
+        let back: LayerMask = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, sanitized);
     }
 }

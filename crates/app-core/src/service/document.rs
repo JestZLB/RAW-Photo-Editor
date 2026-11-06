@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use super::{
     decode_source_image, parse_uuid, AppService, DEFAULT_PREVIEW_MAX, MAX_CACHED_HISTOGRAMS,
-    MAX_CACHED_LUTS, MAX_PREVIEW_DIMENSION, SOURCE_PREVIEW_MAX,
+    MAX_CACHED_LUTS, MAX_CACHED_RASTER_MASKS, MAX_PREVIEW_DIMENSION, SOURCE_PREVIEW_MAX,
 };
 use crate::dto::{
     AutoToneResult, DocumentState, ExportBitDepth, ExportColorSpace, ExportImageFormat,
@@ -116,6 +116,8 @@ fn apply_export_watermark(
 struct DbAssetResolver<'a> {
     db: &'a persistence::Database,
     luts: &'a std::sync::Mutex<std::collections::HashMap<Uuid, Lut>>,
+    rasters:
+        &'a std::sync::Mutex<std::collections::HashMap<Uuid, Arc<render_engine::RasterCoverage>>>,
 }
 
 impl AssetResolver for DbAssetResolver<'_> {
@@ -171,6 +173,38 @@ impl AssetResolver for DbAssetResolver<'_> {
             cache.insert(asset_id, lut.clone());
         }
         Ok(lut)
+    }
+
+    fn load_raster_mask(&self, asset_id: Uuid) -> Option<Arc<render_engine::RasterCoverage>> {
+        if let Ok(cache) = self.rasters.lock() {
+            if let Some(coverage) = cache.get(&asset_id) {
+                return Some(coverage.clone());
+            }
+        }
+        let record = self.db.get_asset(asset_id).ok().flatten()?;
+        if record.kind != "mask" {
+            return None;
+        }
+        let decoded = decode_image_from_path(Path::new(&record.path)).ok()?;
+        // The coverage PNG is written as grayscale replicated into RGB, so the
+        // red channel is the value.
+        let values: Vec<f32> = decoded
+            .rgba8
+            .chunks_exact(4)
+            .map(|pixel| f32::from(pixel[0]) / 255.0)
+            .collect();
+        let coverage = Arc::new(render_engine::RasterCoverage::from_values(
+            decoded.width,
+            decoded.height,
+            values,
+        )?);
+        if let Ok(mut cache) = self.rasters.lock() {
+            if cache.len() >= MAX_CACHED_RASTER_MASKS {
+                cache.clear();
+            }
+            cache.insert(asset_id, coverage.clone());
+        }
+        Some(coverage)
     }
 }
 
@@ -413,6 +447,7 @@ impl AppService {
         let resolver = DbAssetResolver {
             db: &self.db,
             luts: &self.luts,
+            rasters: &self.raster_masks,
         };
         let (encoded, backend) = if render_engine::gpu_available() {
             match render_engine::render_document_gpu(
@@ -562,7 +597,20 @@ impl AppService {
             let mask = request.mask;
             project.session.mutate(|document| {
                 if let Some(layer) = document.layer_mut(layer_id) {
-                    layer.mask = mask;
+                    // Vector edits come from the brush/gradient UI, which does
+                    // not send the raster payload. Keep an existing raster mask
+                    // instead of silently dropping it on the next brush stroke;
+                    // clearing the mask entirely still removes it.
+                    let preserved = layer
+                        .mask
+                        .as_ref()
+                        .and_then(|current| current.raster.clone());
+                    layer.mask = mask.map(|mut next| {
+                        if next.raster.is_none() {
+                            next.raster = preserved;
+                        }
+                        next.sanitized()
+                    });
                     layer.sanitize();
                 }
             });
@@ -590,6 +638,88 @@ impl AppService {
             } else {
                 "清除修饰范围"
             });
+            project.request_save();
+            Ok(self.document_state(project_id, &project.session))
+        })
+    }
+
+    /// Attach externally produced coverage (a segmentation model, for now) to a
+    /// layer as a raster mask.
+    ///
+    /// The pixels are written as a grayscale PNG asset so the document and IPC
+    /// keep carrying only a reference. Any existing vector mask (brush, skin,
+    /// gradient, regions) is preserved; the renderer merges the raster coverage
+    /// with it by taking the maximum.
+    pub fn apply_raster_mask(
+        &self,
+        project_id: Uuid,
+        layer_id: Uuid,
+        coverage: &render_engine::RasterCoverage,
+        source: &str,
+    ) -> Result<DocumentState, ApiError> {
+        self.ensure_session(project_id)?;
+
+        let asset_id = Uuid::new_v4();
+        self.assets.ensure_project_dirs(project_id)?;
+        let path = self.assets.mask_asset_path(project_id, asset_id);
+        let mut rgba = Vec::with_capacity(coverage.values.len() * 4);
+        for value in &coverage.values {
+            // Grayscale replicated into RGB: the resolver reads the red channel.
+            let byte = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+            rgba.extend_from_slice(&[byte, byte, byte, 255]);
+        }
+        let image = DecodedImage::new(coverage.width, coverage.height, rgba)?;
+        encode_atomic(&path, &image, OutputFormat::Png, 100)?;
+        let bytes = std::fs::metadata(&path)
+            .map(|meta| meta.len())
+            .unwrap_or_default();
+        self.db.insert_asset(&persistence::AssetRecord {
+            id: asset_id,
+            project_id,
+            kind: "mask".to_string(),
+            path: path.to_string_lossy().to_string(),
+            width: coverage.width,
+            height: coverage.height,
+            bytes,
+            created_at: ::document::now_rfc3339(),
+        })?;
+        // Warm the resolver cache so the next preview does not re-decode it.
+        if let Ok(mut cache) = self.raster_masks.lock() {
+            if cache.len() >= MAX_CACHED_RASTER_MASKS {
+                cache.clear();
+            }
+            cache.insert(asset_id, Arc::new(coverage.clone()));
+        }
+
+        self.session(project_id, |project| {
+            let kind = project
+                .session
+                .document()
+                .layer(layer_id)
+                .map(|layer| layer.kind)
+                .ok_or_else(|| ApiError::from(DocumentError::LayerNotFound))?;
+            if kind == LayerKind::Base {
+                return Err(ApiError::from(DocumentError::BaseLayerProtected));
+            }
+            if !matches!(kind, LayerKind::Color | LayerKind::Portrait) {
+                return Err(ApiError::invalid_argument(
+                    "layer does not support a mask",
+                    "只有调色或人像图层支持智能蒙版。",
+                ));
+            }
+            project.session.mutate(|document| {
+                if let Some(layer) = document.layer_mut(layer_id) {
+                    let mut mask = layer.mask.clone().unwrap_or_default();
+                    mask.raster = Some(::document::MaskRaster {
+                        asset_id,
+                        threshold: 0.5,
+                        softness: 0.15,
+                        source: source.chars().take(48).collect(),
+                    });
+                    layer.mask = Some(mask.sanitized());
+                }
+            });
+            project.session.commit("智能蒙版");
             project.request_save();
             Ok(self.document_state(project_id, &project.session))
         })
@@ -1044,6 +1174,7 @@ impl AppService {
         let resolver = DbAssetResolver {
             db: &self.db,
             luts: &self.luts,
+            rasters: &self.raster_masks,
         };
         let sixteen_bit = options.bit_depth == ExportBitDepth::Sixteen;
         let mut backend = "cpu";

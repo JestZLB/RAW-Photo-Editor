@@ -124,6 +124,7 @@ code/
 
 ## 明确的边界
 
+- **语义分割尚未接入**：栅格蒙版的数据通路已完成（文档字段、项目资产、渲染采样、缓存与画笔共存策略，见 ADR-014），但没有分割模型与界面入口，因此界面上不提供「主体 / 背景 / 发丝」选择。下一步是接入用户自备的 ONNX 分割模型。
 - **人脸检测（CenterFace + YuNet 双模型）与五官区域已接入，但没有分割模型**。区域是本地像素测量得到的带置信度椭圆，不是逐像素掩膜，侧脸、遮挡与浓妆会漏检；自动肤色蒙版同样是启发式范围识别。眼睛提亮、牙齿美白、黑眼圈、皱纹与斑点修复已按这些实测区域生效，但仍是局部启发式处理：眼睛/牙齿位置不准时效果会偏，大面积的胎记或纹身只能淡化，不可能完全无痕。身体肤色范围与液化位移都是启发式局部处理，不是语义分割；极端侧脸、遮挡、发丝与复杂背景仍可能留下轻微痕迹。液化提供冻结保护画笔与 16×16 网格保护（点格子冻结整块区域，裁剪后仍对齐）。
 - **RAW 是基础解码**。已覆盖松下 RW2/RWL、尼康 NEF/NRW、索尼 ARW 等格式，并用松下 DC-FZ80、尼康 1 J1、索尼 DSC-RX100 样片验证导入/预览/导出；其他机型仍取决于相机数据库。rawler 使用 LGPL-2.1，分发前需完成合规审查（见 `THIRD_PARTY_NOTICES.md`）。
 - **本地 GPU 渲染是子集加速，不是全功能 GPU 管线**。WGPU 目前覆盖基础照片、不含清晰度/锐度的调色、裁剪与 AI 结果图层；人像图层仍走 CPU。设备丢失恢复、显存预算与高分辨率分块尚未完成。**本地 GPU AI 生成**仍未实现；云端生成由服务商 GPU 执行。
@@ -165,6 +166,7 @@ LUMA_RAW_SAMPLE=/path/to/sample.rw2 cargo test -p app-core --test service raw_sa
 - [ADR-011 内置 Photo-HQ-W4xEX](docs/ADR/ADR-011-bundled-photo-hq.md)
 - [ADR-012 照片集与项目](docs/ADR/ADR-012-photo-collections.md)
 - [ADR-013 命名快照](docs/ADR/ADR-013-named-versions.md)
+- [ADR-014 栅格蒙版](docs/ADR/ADR-014-raster-mask.md)
 - [Provider 接入](docs/providers/README.md)
 - [兼容矩阵](docs/compatibility/matrix.md)
 - [架构基线 v4](docs/architecture-v4.html)
