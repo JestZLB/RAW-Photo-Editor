@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { History, RotateCcw, Trash2, X } from "lucide-react";
+import { Eye, History, RotateCcw, Trash2, X } from "lucide-react";
 import { resolveAssetUrl } from "../api/assets";
 import { formatRelativeTime } from "../lib/format";
 import { useEditorStore } from "../stores/editorStore";
@@ -20,6 +20,11 @@ export function VersionsDialog() {
   const createVersion = useEditorStore((state) => state.createVersion);
   const restoreVersion = useEditorStore((state) => state.restoreVersion);
   const deleteVersion = useEditorStore((state) => state.deleteVersion);
+  const compare = useEditorStore((state) => state.versionCompare);
+  const compareVersion = useEditorStore((state) => state.compareVersion);
+  const clearVersionCompare = useEditorStore((state) => state.clearVersionCompare);
+  const currentPreview = useEditorStore((state) => state.preview);
+  const currentSource = useEditorStore((state) => state.doc?.source ?? null);
   const [name, setName] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -80,35 +85,68 @@ export function VersionsDialog() {
           </button>
         </header>
 
-        <div className="versions-dialog__create">
-          <input
-            ref={inputRef}
-            className="input"
-            value={name}
-            maxLength={60}
-            placeholder="例如：定稿、暖调 v2"
-            aria-label="版本名称"
-            disabled={busy}
-            onChange={(event) => setName(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void submit();
-              }
-            }}
-          />
-          <Button
-            variant="primary"
-            size="sm"
-            loading={busy}
-            disabled={!name.trim()}
-            onClick={() => void submit()}
-          >
-            保存当前状态
-          </Button>
-        </div>
+        {compare ? (
+          <div className="version-compare">
+            <figure className="version-compare__pane">
+              <span className="version-compare__tag">版本 · {compare.version.name}</span>
+              <img
+                src={resolveAssetUrl(compare.path) ?? ""}
+                alt={`版本 ${compare.version.name} 的预览`}
+              />
+              <figcaption>
+                {compare.width}×{compare.height} · 第 {compare.version.revision} 次修改
+              </figcaption>
+            </figure>
+            <figure className="version-compare__pane">
+              <span className="version-compare__tag">当前</span>
+              <img
+                src={resolveAssetUrl(currentPreview?.path ?? currentSource?.previewPath) ?? ""}
+                alt="当前编辑状态"
+              />
+              <figcaption>
+                {currentPreview
+                  ? `${currentPreview.width}×${currentPreview.height}`
+                  : "源图预览"}
+              </figcaption>
+            </figure>
+          </div>
+        ) : null}
 
-        <div className="versions-dialog__list">
+        {compare ? (
+          <p className="version-compare__hint">
+            两侧各按自己的裁剪显示：比例不同，说明这个版本用过不同的裁剪或旋转。
+          </p>
+        ) : (
+          <div className="versions-dialog__create">
+            <input
+              ref={inputRef}
+              className="input"
+              value={name}
+              maxLength={60}
+              placeholder="例如：定稿、暖调 v2"
+              aria-label="版本名称"
+              disabled={busy}
+              onChange={(event) => setName(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              loading={busy}
+              disabled={!name.trim()}
+              onClick={() => void submit()}
+            >
+              保存当前状态
+            </Button>
+          </div>
+        )}
+
+        <div className="versions-dialog__list" hidden={compare !== null}>
           {busy && versions.length === 0 ? (
             <p className="versions-dialog__loading">
               <Spinner size={11} />
@@ -139,6 +177,16 @@ export function VersionsDialog() {
                       </span>
                     </span>
                     <span className="version-row__actions">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={<Eye size={12} />}
+                        disabled={busy}
+                        title="与当前状态并排对比"
+                        onClick={() => void compareVersion(version.id)}
+                      >
+                        对比
+                      </Button>
                       <Button
                         variant="secondary"
                         size="sm"
@@ -184,10 +232,29 @@ export function VersionsDialog() {
         </div>
 
         <footer className="versions-dialog__foot">
-          <span>保存的是这个项目的图层、调色与人像参数；原图不会被改动。</span>
-          <Button variant="ghost" size="sm" disabled={busy} onClick={close}>
-            关闭
-          </Button>
+          {compare ? (
+            <>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={clearVersionCompare}>
+                返回列表
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<RotateCcw size={12} />}
+                disabled={busy}
+                onClick={() => void restoreVersion(compare.version.id)}
+              >
+                恢复这个版本
+              </Button>
+            </>
+          ) : (
+            <>
+              <span>保存的是这个项目的图层、调色与人像参数；原图不会被改动。</span>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={close}>
+                关闭
+              </Button>
+            </>
+          )}
         </footer>
       </div>
     </div>,

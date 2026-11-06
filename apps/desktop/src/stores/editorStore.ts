@@ -243,6 +243,13 @@ export interface EditorState {
   versions: VersionSummary[];
   versionsOpen: boolean;
   versionsBusy: boolean;
+  /** Snapshot currently shown side-by-side with the live edit. */
+  versionCompare: {
+    version: VersionSummary;
+    path: string;
+    width: number;
+    height: number;
+  } | null;
 
   bootstrap: () => Promise<void>;
   refreshRecent: () => Promise<void>;
@@ -276,6 +283,9 @@ export interface EditorState {
   /** Restore a snapshot; the restore itself becomes one undo step. */
   restoreVersion: (versionId: string) => Promise<void>;
   deleteVersion: (versionId: string) => Promise<void>;
+  /** Render a snapshot for side-by-side comparison with the current edit. */
+  compareVersion: (versionId: string) => Promise<void>;
+  clearVersionCompare: () => void;
 
   setTool: (tool: ToolId) => void;
   setCropDraft: (draft: CropDraft) => void;
@@ -1043,6 +1053,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         versions: [],
         versionsOpen: false,
         versionsBusy: false,
+        versionCompare: null,
       };
     });
     schedulePreview(20);
@@ -1116,6 +1127,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     versions: [],
     versionsOpen: false,
     versionsBusy: false,
+    versionCompare: null,
 
     bootstrap: async () => {
       if (bootstrapPromise) return bootstrapPromise;
@@ -1291,7 +1303,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     },
 
     closeVersions: () => {
-      if (!get().versionsBusy) set({ versionsOpen: false });
+      if (!get().versionsBusy) set({ versionsOpen: false, versionCompare: null });
     },
 
     createVersion: async (name) => {
@@ -1343,13 +1355,52 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       set({ versionsBusy: true });
       try {
         const versions = await api.deleteVersion({ projectId: doc.id, versionId });
-        if (isCurrentProject(doc.id)) set({ versions });
+        if (isCurrentProject(doc.id)) {
+          const comparing = get().versionCompare;
+          set({
+            versions,
+            // The rendered file is gone with the snapshot.
+            versionCompare: comparing?.version.id === versionId ? null : comparing,
+          });
+        }
       } catch (error) {
         errorToast(error, "删除版本失败，请重试。");
       } finally {
         set({ versionsBusy: false });
       }
     },
+
+    compareVersion: async (versionId) => {
+      const api = get().api;
+      const doc = get().doc;
+      if (!api || !doc) return;
+      const version = get().versions.find((item) => item.id === versionId);
+      if (!version) return;
+      set({ versionsBusy: true });
+      try {
+        const preview = await api.renderVersionPreview({
+          projectId: doc.id,
+          versionId,
+          maxDimension: useSettingsStore.getState().previewMaxDimension,
+        });
+        if (isCurrentProject(doc.id)) {
+          set({
+            versionCompare: {
+              version,
+              path: preview.path,
+              width: preview.width,
+              height: preview.height,
+            },
+          });
+        }
+      } catch (error) {
+        errorToast(error, "这个版本的对比图没有生成，请重试。");
+      } finally {
+        set({ versionsBusy: false });
+      }
+    },
+
+    clearVersionCompare: () => set({ versionCompare: null }),
 
     createEmptyProject: async (name) => {
       const api = get().api;

@@ -50,6 +50,12 @@ export interface VersionIdRequest {
   versionId: string;
 }
 
+export interface VersionPreviewRequest {
+  projectId: string;
+  versionId: string;
+  maxDimension?: number;
+}
+
 export interface CollectionSummary {
   id: string;
   name: string;

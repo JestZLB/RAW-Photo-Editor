@@ -54,6 +54,7 @@ import type {
   UpdateLayerParamsRequest,
   UpdateLayerRequest,
   VersionIdRequest,
+  VersionPreviewRequest,
   VersionSummary,
   WhiteBalanceResult,
 } from "./types";
@@ -103,6 +104,8 @@ export function createTauriClient(): EditorApi {
     restoreVersion: (req: VersionIdRequest) =>
       call<DocumentState>("restore_version", req),
     deleteVersion: (req: VersionIdRequest) => call<VersionSummary[]>("delete_version", req),
+    renderVersionPreview: (req: VersionPreviewRequest) =>
+      call<PreviewResult>("render_version_preview", req),
     renameProject: (req: RenameProjectRequest) =>
       call<ProjectSummary>("rename_project", req),
     renameCollection: (req) => call<void>("rename_collection", req),

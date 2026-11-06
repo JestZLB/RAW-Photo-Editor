@@ -7247,8 +7247,64 @@ html[data-reduce-motion="true"] *::after {
   background: rgba(255, 135, 147, 0.12);
 }
 
+.version-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.version-compare__pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--raised);
+}
+
+.version-compare__pane img {
+  width: 100%;
+  min-height: 0;
+  max-height: 46vh;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--bg-deep);
+}
+
+.version-compare__pane figcaption {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.version-compare__tag {
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-compare__hint {
+  margin: 0;
+  color: var(--subtle);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 @media (max-width: 720px) {
   .versions-dialog__create {
     flex-direction: column;
+  }
+
+  .version-compare {
+    grid-template-columns: 1fr;
   }
 }
