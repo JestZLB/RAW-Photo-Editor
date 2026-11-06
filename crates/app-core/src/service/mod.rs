@@ -559,6 +559,7 @@ impl AppService {
                         color: layer.color,
                         portrait: layer.portrait,
                         retouch: layer.retouch.clone(),
+                        blur: layer.blur,
                         mask: layer.mask.clone(),
                         // Only AI result layers expose an asset id in the contract.
                         asset_id: if layer.kind == LayerKind::AiResult {
@@ -846,6 +847,7 @@ pub(crate) fn layer_kind_label(kind: LayerKind) -> &'static str {
         LayerKind::Color => "color",
         LayerKind::AiResult => "aiResult",
         LayerKind::Retouch => "retouch",
+        LayerKind::Blur => "blur",
     }
 }
 

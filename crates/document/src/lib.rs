@@ -159,6 +159,7 @@ pub enum LayerKind {
     Color,
     AiResult,
     Retouch,
+    Blur,
 }
 
 /// How a retouch stamp fills its disc.
@@ -1052,6 +1053,31 @@ impl MaskRegion {
     }
 }
 
+/// Background blur controlled by a single radius. The layer's mask keeps the
+/// existing meaning — coverage is where the effect applies — so protecting a
+/// segmented subject means inverting the mask (`LayerMask.inverted`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlurParams {
+    /// Radius as a fraction of the shortest frame side; 0..0.08 is roughly
+    /// 0..80 px on a 1000 px preview.
+    pub radius: f32,
+}
+
+impl Default for BlurParams {
+    fn default() -> Self {
+        Self { radius: 0.012 }
+    }
+}
+
+impl BlurParams {
+    pub fn sanitized(&self) -> Self {
+        Self {
+            radius: clamp_finite(self.radius, 0.0, 0.08, 0.012),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Layer {
@@ -1066,7 +1092,10 @@ pub struct Layer {
     pub portrait: Option<PortraitParams>,
     #[serde(default)]
     pub retouch: Option<RetouchParams>,
-    /// Optional manual brush mask. Applies to color/portrait layers.
+    /// Populated for `Blur` layers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blur: Option<BlurParams>,
+    /// Optional manual brush mask. Applies to color/portrait/blur layers.
     #[serde(default)]
     pub mask: Option<LayerMask>,
     /// Populated for `AiResult` layers.
@@ -1087,6 +1116,7 @@ impl Layer {
             color: None,
             portrait: None,
             retouch: None,
+            blur: None,
             mask: None,
             asset_id: None,
             created_at: now_rfc3339(),
@@ -1118,6 +1148,12 @@ impl Layer {
         layer
     }
 
+    pub fn blur() -> Self {
+        let mut layer = Self::with_kind("背景虚化", LayerKind::Blur);
+        layer.blur = Some(BlurParams::default());
+        layer
+    }
+
     pub fn ai_result(asset_id: Uuid) -> Self {
         let mut layer = Self::with_kind("AI 效果", LayerKind::AiResult);
         layer.asset_id = Some(asset_id);
@@ -1135,6 +1171,9 @@ impl Layer {
         }
         if let Some(portrait) = self.portrait {
             self.portrait = Some(portrait.sanitized());
+        }
+        if let Some(blur) = self.blur {
+            self.blur = Some(blur.sanitized());
         }
         if let Some(retouch) = &mut self.retouch {
             retouch.spots.truncate(400);

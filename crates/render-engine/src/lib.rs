@@ -158,6 +158,54 @@ fn feather_mask_values(mask: &[f32], width: usize, height: usize, radius: usize)
     transpose_mask(&blurred, height, width)
 }
 
+/// Approximate Gaussian blur: three box passes over RGB, alpha untouched.
+///
+/// Box passes are separable and use prefix sums, so cost is O(pixels) per pass
+/// regardless of radius; three passes are visually indistinguishable from a
+/// Gaussian and avoid a kernel-sized inner loop on 4K frames.
+fn blur_linear_rgb(image: &mut LinearImage, radius: usize) {
+    let width = image.width as usize;
+    let height = image.height as usize;
+    if width == 0 || height == 0 || radius == 0 {
+        return;
+    }
+    let radius = radius.min(width.min(height) / 2).max(1);
+    let mut horizontal = vec![0.0f32; width * height * 3];
+    // One buffer for every prefix scan: allocating per row/channel would dominate
+    // the cost on a 1600px preview.
+    let mut prefix = vec![0.0f32; width.max(height) + 1];
+    for _ in 0..3 {
+        for y in 0..height {
+            for channel in 0..3 {
+                prefix[0] = 0.0;
+                for x in 0..width {
+                    prefix[x + 1] = prefix[x] + image.data[(y * width + x) * 4 + channel];
+                }
+                for x in 0..width {
+                    let left = x.saturating_sub(radius);
+                    let right = (x + radius + 1).min(width);
+                    horizontal[(y * width + x) * 3 + channel] =
+                        (prefix[right] - prefix[left]) / (right - left) as f32;
+                }
+            }
+        }
+        for x in 0..width {
+            for channel in 0..3 {
+                prefix[0] = 0.0;
+                for y in 0..height {
+                    prefix[y + 1] = prefix[y] + horizontal[(y * width + x) * 3 + channel];
+                }
+                for y in 0..height {
+                    let top = y.saturating_sub(radius);
+                    let bottom = (y + radius + 1).min(height);
+                    image.data[(y * width + x) * 4 + channel] =
+                        (prefix[bottom] - prefix[top]) / (bottom - top) as f32;
+                }
+            }
+        }
+    }
+}
+
 /// Rasterize normalized brush strokes into the current render resolution.
 ///
 /// Layers are composited on the full frame; cropping happens afterwards. Mask
@@ -487,6 +535,56 @@ pub fn render_document(
                 if let Some(lut) = lut {
                     apply_lut(processed, lut, params.lut_strength);
                 }
+                let mask = layer
+                    .mask
+                    .as_ref()
+                    .filter(|mask| !mask.is_empty())
+                    .map(|mask| {
+                        let raster = mask
+                            .raster
+                            .as_ref()
+                            .and_then(|raster| resolver.load_raster_mask(raster.asset_id));
+                        rasterize_mask(
+                            mask,
+                            &current,
+                            source.width,
+                            source.height,
+                            processed.width,
+                            processed.height,
+                            raster.as_deref(),
+                        )
+                    });
+                if let Some(mask) = mask {
+                    composite_over_masked(
+                        &mut current,
+                        processed,
+                        &mask,
+                        layer.opacity,
+                        map_blend(layer.blend_mode),
+                    )
+                    .map_err(|e| RenderError::InvalidDimensions(e.to_string()))?;
+                } else {
+                    composite_over(
+                        &mut current,
+                        processed,
+                        layer.opacity,
+                        map_blend(layer.blend_mode),
+                    )
+                    .map_err(|e| RenderError::InvalidDimensions(e.to_string()))?;
+                }
+            }
+            LayerKind::Blur => {
+                let Some(params) = layer.blur else {
+                    continue;
+                };
+                let shortest = current.width.min(current.height) as f32;
+                let radius = (params.radius.clamp(0.0, 0.08) * shortest).round();
+                if radius < 0.5 {
+                    continue;
+                }
+                let processed = scratch.get_or_insert_with(|| current.clone());
+                processed.copy_from(&current);
+                blur_linear_rgb(processed, radius as usize);
                 let mask = layer
                     .mask
                     .as_ref()
@@ -2213,6 +2311,39 @@ mod tests {
             boundary(&rendered, 22) > boundary(&reference, 22),
             "rows outside the protected cells still follow the stroke"
         );
+    }
+
+    #[test]
+    fn blur_spreads_energy_and_leaves_alpha_alone() {
+        let mut image = LinearImage::new(8, 8, vec![0.0f32; 8 * 8 * 4]).unwrap();
+        for index in 0..8 * 8 {
+            image.data[index * 4 + 3] = 1.0;
+        }
+        let centre = (3 * 8 + 3) * 4;
+        image.data[centre] = 1.0;
+        image.data[centre + 1] = 1.0;
+        image.data[centre + 2] = 1.0;
+
+        blur_linear_rgb(&mut image, 2);
+
+        assert!(
+            image.data[centre] < 0.9,
+            "the centre must spread into its neighbours"
+        );
+        let neighbour = (3 * 8 + 2) * 4;
+        assert!(
+            image.data[neighbour] > 0.0,
+            "neighbours must receive energy"
+        );
+        assert_eq!(image.data[centre + 3], 1.0, "alpha is untouched");
+    }
+
+    #[test]
+    fn zero_radius_blur_is_a_noop() {
+        let mut image = LinearImage::new(2, 2, vec![0.25f32; 2 * 2 * 4]).unwrap();
+        let before = image.data.clone();
+        blur_linear_rgb(&mut image, 0);
+        assert_eq!(image.data, before);
     }
 
     #[test]

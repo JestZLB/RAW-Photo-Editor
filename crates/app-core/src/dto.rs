@@ -113,6 +113,7 @@ pub struct LayerState {
     pub color: Option<ColorParams>,
     pub portrait: Option<PortraitParams>,
     pub retouch: Option<document::RetouchParams>,
+    pub blur: Option<document::BlurParams>,
     pub mask: Option<LayerMask>,
     pub asset_id: Option<String>,
     pub preview_path: Option<String>,

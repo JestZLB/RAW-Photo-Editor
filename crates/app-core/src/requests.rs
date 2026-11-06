@@ -2,7 +2,8 @@
 //! command layer can deserialize `{ req }` without translation.
 
 use document::{
-    ColorParams, CropRect, LayerMask, LayerPatch, MoveDirection, PortraitParams, RetouchParams,
+    BlurParams, ColorParams, CropRect, LayerMask, LayerPatch, MoveDirection, PortraitParams,
+    RetouchParams,
 };
 use serde::{Deserialize, Serialize};
 
@@ -168,6 +169,8 @@ pub struct UpdateLayerParamsRequest {
     pub portrait: Option<PortraitParams>,
     #[serde(default)]
     pub retouch: Option<RetouchParams>,
+    #[serde(default)]
+    pub blur: Option<BlurParams>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -237,6 +240,7 @@ pub enum AddLayerKind {
     Portrait,
     Color,
     Retouch,
+    Blur,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -517,7 +517,11 @@ impl AppService {
     ) -> Result<DocumentState, ApiError> {
         let project_id = parse_uuid(&request.project_id, "project")?;
         let layer_id = parse_uuid(&request.layer_id, "layer")?;
-        if request.color.is_none() && request.portrait.is_none() && request.retouch.is_none() {
+        if request.color.is_none()
+            && request.portrait.is_none()
+            && request.retouch.is_none()
+            && request.blur.is_none()
+        {
             return Err(ApiError::invalid_argument(
                 "no layer parameters supplied",
                 "没有可应用的调整参数。",
@@ -550,9 +554,16 @@ impl AppService {
                     "该图层不支持局部修复参数。",
                 ));
             }
+            if request.blur.is_some() && layer.kind != LayerKind::Blur {
+                return Err(ApiError::invalid_argument(
+                    "blur params sent to a non-blur layer",
+                    "该图层不支持背景虚化参数。",
+                ));
+            }
             let color = request.color;
             let portrait = request.portrait;
             let retouch = request.retouch;
+            let blur = request.blur;
             project.session.mutate(|document| {
                 if let Some(layer) = document.layer_mut(layer_id) {
                     if let Some(color) = color {
@@ -563,6 +574,9 @@ impl AppService {
                     }
                     if let Some(retouch) = retouch {
                         layer.retouch = Some(retouch);
+                    }
+                    if let Some(blur) = blur {
+                        layer.blur = Some(blur.sanitized());
                     }
                 }
             });
@@ -588,10 +602,13 @@ impl AppService {
             if layer.kind == LayerKind::Base {
                 return Err(ApiError::from(DocumentError::BaseLayerProtected));
             }
-            if !matches!(layer.kind, LayerKind::Color | LayerKind::Portrait) {
+            if !matches!(
+                layer.kind,
+                LayerKind::Color | LayerKind::Portrait | LayerKind::Blur
+            ) {
                 return Err(ApiError::invalid_argument(
                     "layer does not support a manual mask",
-                    "只有调色或人像图层支持局部画笔。",
+                    "只有调色、人像或背景虚化图层支持局部画笔。",
                 ));
             }
             let mask = request.mask;
@@ -703,10 +720,13 @@ impl AppService {
             if kind == LayerKind::Base {
                 return Err(ApiError::from(DocumentError::BaseLayerProtected));
             }
-            if !matches!(kind, LayerKind::Color | LayerKind::Portrait) {
+            if !matches!(
+                kind,
+                LayerKind::Color | LayerKind::Portrait | LayerKind::Blur
+            ) {
                 return Err(ApiError::invalid_argument(
                     "layer does not support a mask",
-                    "只有调色或人像图层支持智能蒙版。",
+                    "只有调色、人像或背景虚化图层支持智能蒙版。",
                 ));
             }
             project.session.mutate(|document| {
@@ -889,6 +909,7 @@ impl AppService {
                 AddLayerKind::Portrait => (Layer::portrait(), "添加人像图层"),
                 AddLayerKind::Color => (Layer::color(), "添加调色图层"),
                 AddLayerKind::Retouch => (Layer::retouch(), "添加修复图层"),
+                AddLayerKind::Blur => (Layer::blur(), "添加背景虚化"),
             };
             if face_context {
                 label = "添加人脸美颜";
@@ -906,10 +927,13 @@ impl AppService {
                 layer.portrait = Some(portrait);
             }
             if let Some(mask) = request.mask {
-                if !matches!(request.kind, AddLayerKind::Portrait | AddLayerKind::Color) {
+                if !matches!(
+                    request.kind,
+                    AddLayerKind::Portrait | AddLayerKind::Color | AddLayerKind::Blur
+                ) {
                     return Err(ApiError::invalid_argument(
                         "mask sent to a layer that cannot be masked",
-                        "只有人像或调色图层支持蒙版。",
+                        "只有人像、调色或背景虚化图层支持蒙版。",
                     ));
                 }
                 layer.mask = Some(mask);

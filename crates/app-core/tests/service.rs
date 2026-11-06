@@ -222,6 +222,7 @@ fn meta_update_returns_the_envelope_without_layers() {
             }),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
 
@@ -271,6 +272,7 @@ fn named_versions_survive_a_restart_and_restore_as_undoable_steps() {
             color: Some(params),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
     app.service
@@ -299,6 +301,7 @@ fn named_versions_survive_a_restart_and_restore_as_undoable_steps() {
             color: Some(params),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
     app.service
@@ -457,6 +460,7 @@ fn raster_mask_confines_an_adjustment_to_the_selected_half() {
             }),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
     app.service
@@ -624,6 +628,138 @@ fn segmentation_reports_unconfigured_and_broken_models() {
     assert_eq!(error.code, "SEGMENTATION_MODEL_INVALID");
 }
 
+/// Background blur must follow its mask: the checkerboard stays sharp outside
+/// and turns smooth inside. This is the first consumer of the raster mask
+/// (ADR-014), so it doubles as an integration check for that path.
+#[test]
+fn blur_layer_smooths_only_inside_its_mask() {
+    use document::BlurParams;
+    use render_engine::RasterCoverage;
+
+    fn write_checkerboard(path: &Path) {
+        let (width, height, cell) = (64u32, 48u32, 4u32);
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                let value = if ((x / cell) + (y / cell)) % 2 == 0 {
+                    235
+                } else {
+                    20
+                };
+                rgba.extend_from_slice(&[value, value, value, 255]);
+            }
+        }
+        let image = DecodedImage::new(width, height, rgba).unwrap();
+        encode_atomic(path, &image, OutputFormat::Png, 100).unwrap();
+    }
+
+    /// Mean absolute difference between horizontally adjacent pixels, per half.
+    fn half_contrast(path: &str) -> (f32, f32) {
+        let image = image_core::decode_image_from_path(Path::new(path)).unwrap();
+        let width = image.width as usize;
+        let height = image.height as usize;
+        let half = width / 2;
+        let mut left = 0f64;
+        let mut right = 0f64;
+        let mut left_count = 0usize;
+        let mut right_count = 0usize;
+        for y in 0..height {
+            for x in 0..width.saturating_sub(1) {
+                let at = (y * width + x) * 4;
+                let diff = (image.rgba8[at] as f64 - image.rgba8[at + 4] as f64).abs();
+                if x + 1 < half {
+                    left += diff;
+                    left_count += 1;
+                } else if x >= half {
+                    right += diff;
+                    right_count += 1;
+                }
+            }
+        }
+        (
+            (left / left_count.max(1) as f64) as f32,
+            (right / right_count.max(1) as f64) as f32,
+        )
+    }
+
+    let app = TestApp::new();
+    let path = app.dir.path().join("checker.png");
+    write_checkerboard(&path);
+    let state = app
+        .service
+        .import_photo(ImportPhotoRequest {
+            path: path.to_string_lossy().to_string(),
+            collection_id: None,
+            collection_name: None,
+        })
+        .unwrap();
+    let project_id = state.id.clone();
+    let state = app
+        .service
+        .add_layer(AddLayerRequest {
+            project_id: project_id.clone(),
+            kind: AddLayerKind::Blur,
+            name: None,
+            portrait: None,
+            mask: None,
+        })
+        .unwrap();
+    let layer = state.layers.last().unwrap();
+    assert_eq!(layer.kind, "blur");
+    assert!((layer.blur.expect("blur params").radius - 0.012).abs() < 1e-6);
+    let layer_id = layer.id.clone();
+
+    app.service
+        .update_layer_params(UpdateLayerParamsRequest {
+            project_id: project_id.clone(),
+            layer_id: layer_id.clone(),
+            color: None,
+            portrait: None,
+            retouch: None,
+            blur: Some(BlurParams { radius: 0.08 }),
+        })
+        .unwrap();
+    app.service
+        .commit_changes(CommitChangesRequest {
+            project_id: project_id.clone(),
+            label: "背景虚化".into(),
+        })
+        .unwrap();
+
+    // Only the left half is covered.
+    let coverage = RasterCoverage::from_values(2, 1, vec![1.0, 0.0]).unwrap();
+    app.service
+        .apply_raster_mask(
+            Uuid::parse_str(&project_id).unwrap(),
+            Uuid::parse_str(&layer_id).unwrap(),
+            &coverage,
+            "test",
+            0.5,
+            0.0,
+        )
+        .unwrap();
+
+    let preview = app
+        .service
+        .render_preview(RenderPreviewRequest {
+            project_id: project_id.clone(),
+            max_dimension: Some(320),
+            ignore_crop: false,
+        })
+        .unwrap();
+    let (left, right) = half_contrast(&preview.path);
+    // A 4px checkerboard has one hard edge every 4 columns, so the mean adjacent
+    // difference is ~215/4; anything close to that means it was not blurred.
+    assert!(
+        right > 35.0,
+        "the unmasked half must stay a sharp checkerboard: {right}"
+    );
+    assert!(
+        left < right * 0.5,
+        "the masked half must be blurred: {left} vs {right}"
+    );
+}
+
 #[test]
 fn slider_params_commit_once_and_undo_redo_are_monotonic() {
     let app = TestApp::new();
@@ -657,6 +793,7 @@ fn slider_params_commit_once_and_undo_redo_are_monotonic() {
             color: Some(params),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
     assert_eq!(state.revision, revision_before + 1);
@@ -672,6 +809,7 @@ fn slider_params_commit_once_and_undo_redo_are_monotonic() {
             color: Some(params),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
     let committed = app
@@ -859,6 +997,7 @@ fn portrait_params_are_stored_and_sanitized() {
             color: None,
             portrait: Some(portrait),
             retouch: None,
+            blur: None,
         })
         .unwrap();
     let stored = state.layers.last().unwrap().portrait.unwrap();
@@ -1465,6 +1604,7 @@ fn committed_edits_survive_reopen_but_history_does_not() {
             }),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
     app.service
@@ -2417,6 +2557,7 @@ fn imported_lut_survives_reopen_and_drives_the_cpu_renderer() {
             }),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
     let committed = app
@@ -2559,6 +2700,7 @@ fn render_previews_are_pruned_as_revisions_advance() {
                 }),
                 portrait: None,
                 retouch: None,
+                blur: None,
             })
             .unwrap();
         app.service
@@ -2653,6 +2795,7 @@ fn concurrent_edits_to_two_projects_both_persist() {
                             }),
                             portrait: None,
                             retouch: None,
+                            blur: None,
                         })
                         .unwrap();
                     service
@@ -2741,6 +2884,7 @@ fn retouch_layer_persists_and_forces_the_cpu_path() {
             color: None,
             portrait: None,
             retouch: Some(params),
+            blur: None,
         })
         .unwrap();
     assert_eq!(
@@ -3162,6 +3306,7 @@ fn syncing_colour_adjustments_replaces_the_target_colour_stack() {
             }),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
     app.service
@@ -3346,6 +3491,7 @@ fn syncing_colour_adjustments_copies_lut_files_into_the_target_project() {
             }),
             portrait: None,
             retouch: None,
+            blur: None,
         })
         .unwrap();
     app.service
