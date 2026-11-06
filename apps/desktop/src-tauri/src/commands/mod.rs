@@ -3,6 +3,7 @@ mod app;
 mod document;
 mod project;
 mod provider;
+mod segmentation;
 mod version;
 
 pub use ai::*;
@@ -10,6 +11,7 @@ pub use app::*;
 pub use document::*;
 pub use project::*;
 pub use provider::*;
+pub use segmentation::*;
 pub use version::*;
 
 use app_core::ApiError;

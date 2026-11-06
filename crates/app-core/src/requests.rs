@@ -40,6 +40,35 @@ pub struct VersionIdRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ClearRasterMaskRequest {
+    pub project_id: String,
+    pub layer_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SegmentationCapabilityRequest {
+    #[serde(default)]
+    pub model_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SegmentMaskRequest {
+    pub project_id: String,
+    pub layer_id: String,
+    /// Absolute path chosen in settings; the model is never bundled.
+    pub model_path: String,
+    /// Keep coverage above this value, 0..1.
+    #[serde(default)]
+    pub threshold: Option<f32>,
+    /// Edge softness in coverage units.
+    #[serde(default)]
+    pub softness: Option<f32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenderVersionPreviewRequest {
     pub project_id: String,
     pub version_id: String,

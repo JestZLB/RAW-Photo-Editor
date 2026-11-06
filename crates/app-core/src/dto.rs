@@ -32,6 +32,15 @@ pub struct AiDenoiseCapability {
     pub onnx: AiEngineCapability,
 }
 
+/// Whether the configured segmentation model can actually run. `reason` is
+/// shown verbatim in the UI, so an unconfigured model never looks like a bug.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SegmentationCapability {
+    pub available: bool,
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {

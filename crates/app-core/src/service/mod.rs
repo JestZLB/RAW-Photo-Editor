@@ -9,6 +9,7 @@ mod denoise;
 mod document;
 mod projects;
 mod providers;
+mod segmentation;
 mod versions;
 
 use std::collections::HashMap;
@@ -242,6 +243,10 @@ pub struct AppService {
     pub(crate) histograms: Mutex<HashMap<PathBuf, Histogram>>,
     pub(crate) raster_masks: Mutex<HashMap<Uuid, Arc<render_engine::RasterCoverage>>>,
     pub(crate) denoise_models: Mutex<HashMap<PathBuf, Arc<ai_denoise::DenoiseModel>>>,
+    /// Loaded segmentation models, keyed by the user-chosen `.onnx` path.
+    pub(crate) segmentation_models: Mutex<HashMap<PathBuf, Arc<::segmentation::SegmentationModel>>>,
+    /// Last probe result, so opening settings does not re-run inference.
+    pub(crate) segmentation_probe: Mutex<Option<(PathBuf, Result<(), String>)>>,
     /// Cached Vulkan probe for the bundled Photo-HQ engine.
     pub(crate) photo_hq_probe: Mutex<Option<Result<(), String>>>,
     /// Serialises document writes; kept separate so a slow SQLite save never
@@ -285,6 +290,8 @@ impl AppService {
             histograms: Mutex::new(HashMap::new()),
             raster_masks: Mutex::new(HashMap::new()),
             denoise_models: Mutex::new(HashMap::new()),
+            segmentation_models: Mutex::new(HashMap::new()),
+            segmentation_probe: Mutex::new(None),
             photo_hq_probe: Mutex::new(None),
             save_lock: Mutex::new(()),
             tasks: TaskRegistry::new(),

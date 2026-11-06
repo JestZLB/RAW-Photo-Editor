@@ -13,6 +13,7 @@ members = [
   "crates/persistence",
   "crates/task-runtime",
   "crates/ai-denoise",
+  "crates/segmentation",
 ]
 
 [workspace.package]
