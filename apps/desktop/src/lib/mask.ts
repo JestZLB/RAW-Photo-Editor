@@ -110,6 +110,10 @@ export function normalizeMask(mask: LayerMask | null | undefined): LayerMask {
     inverted: mask?.inverted ?? false,
     feather: mask?.feather ?? 0,
     density: mask?.density ?? 1,
+    // Without this, every mask rebuilt from a normalised copy (brush stroke,
+    // gradient, "protect subject") silently dropped the segmentation raster —
+    // the desktop backend preserves it, but the browser demo did not.
+    raster: mask?.raster ?? null,
   };
 }
 

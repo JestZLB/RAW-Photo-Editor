@@ -1245,17 +1245,25 @@ export class DemoBackend implements EditorApi {
     await delay(24);
     const project = this.requireProject(req.projectId);
     const layer = this.requireEditableLayer(project, req.layerId);
-    if (layer.kind !== "color" && layer.kind !== "portrait") {
+    if (
+      layer.kind !== "color" &&
+      layer.kind !== "portrait" &&
+      layer.kind !== "blur"
+    ) {
       throw apiError(
         "INVALID_ARGUMENT",
         "Layer does not support masks",
-        "只有调色或人像图层支持局部画笔。",
+        "只有调色、人像或背景虚化图层支持局部画笔。",
       );
     }
     layer.mask = cloneMask(req.mask);
     const mask = req.mask;
     const hasContent = Boolean(
-      mask && (mask.strokes.length > 0 || mask.autoSkin || mask.gradient),
+      mask &&
+        (mask.strokes.length > 0 ||
+          mask.autoSkin ||
+          mask.gradient ||
+          mask.raster),
     );
     let label = "清除修饰范围";
     if (mask && hasContent) {

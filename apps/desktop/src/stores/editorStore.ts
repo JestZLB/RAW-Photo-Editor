@@ -2777,14 +2777,16 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const api = get().api;
       const doc = get().doc;
       const layer = doc?.layers.find((item) => item.id === layerId);
-      if (!api || !doc || !layer || (layer.kind !== "color" && layer.kind !== "portrait")) {
+      if (!api || !doc || !layer || (layer.kind !== "color" && layer.kind !== "portrait" && layer.kind !== "blur")) {
         return;
       }
       const previous = layer.mask;
       const strokes = [...(previous?.strokes ?? []), stroke].slice(-500);
+      // A brush stroke must not discard the gradient, segmentation raster,
+      // inversion or feather that are already on this mask.
       const mask: NonNullable<LayerState["mask"]> = {
+        ...normalizeMask(previous),
         strokes,
-        autoSkin: previous?.autoSkin ?? false,
       };
       patchLocalLayer(layerId, (item) => ({ ...item, mask }));
       await flushSync();
@@ -2806,15 +2808,19 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const api = get().api;
       const doc = get().doc;
       const layer = doc?.layers.find((item) => item.id === layerId);
-      if (!api || !doc || !layer || (layer.kind !== "color" && layer.kind !== "portrait")) {
+      if (!api || !doc || !layer || (layer.kind !== "color" && layer.kind !== "portrait" && layer.kind !== "blur")) {
         return;
       }
       const previous = layer.mask;
-      const strokes = previous?.strokes ?? [];
+      const base = normalizeMask(previous);
+      const hasOtherContent =
+        base.strokes.length > 0 ||
+        (base.regions?.length ?? 0) > 0 ||
+        base.gradient !== null ||
+        base.raster !== null;
+      // Only clear the mask when auto-skin really was its only content.
       const nextMask =
-        enabled || strokes.length > 0
-          ? { strokes, autoSkin: enabled }
-          : null;
+        enabled || hasOtherContent ? { ...base, autoSkin: enabled } : null;
       patchLocalLayer(layerId, (item) => ({ ...item, mask: nextMask }));
       await flushSync();
       try {
@@ -2890,7 +2896,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
 
     setMaskGradient: async (layerId, gradient) => {
       const layer = get().doc?.layers.find((item) => item.id === layerId);
-      if (!layer || (layer.kind !== "color" && layer.kind !== "portrait")) return;
+      if (!layer || (layer.kind !== "color" && layer.kind !== "portrait" && layer.kind !== "blur")) return;
       if (!layer.mask && !gradient) return;
       await persistLayerMask(layerId, {
         ...normalizeMask(layer.mask),

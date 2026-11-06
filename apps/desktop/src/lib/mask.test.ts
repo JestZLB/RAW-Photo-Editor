@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { LayerMask } from "../api/types";
 import {
   brushRadiusInFrame,
   defaultMaskGradient,
@@ -82,5 +83,45 @@ describe("rotated crop mapping", () => {
     const view = sourcePointToView({ x: 0.5, y: 0.5 }, crop, 800, 600, 0);
     expect(view.x).toBeCloseTo(0.75, 6);
     expect(view.y).toBeCloseTo(250 / 300, 6);
+  });
+});
+
+describe("normalizeMask", () => {
+  it("preserves the segmentation raster and tuning fields on rebuild", () => {
+    const raster = {
+      assetId: "0f8fad5b-d9cb-469f-a165-70867728950e",
+      threshold: 0.55,
+      softness: 0.2,
+      source: "onnx:foreground",
+    };
+    const mask: LayerMask = {
+      strokes: [],
+      autoSkin: true,
+      regions: [],
+      gradient: { kind: "linear", start: { x: 0, y: 0 }, end: { x: 1, y: 1 } },
+      inverted: true,
+      feather: 0.3,
+      density: 0.75,
+      raster,
+    };
+    const rebuilt = normalizeMask(mask);
+    expect(rebuilt.raster).toEqual(raster);
+    expect(rebuilt.gradient).toEqual(mask.gradient);
+    expect(rebuilt.inverted).toBe(true);
+    expect(rebuilt.feather).toBe(0.3);
+    expect(rebuilt.density).toBe(0.75);
+  });
+
+  it("fills every field when there is no mask yet", () => {
+    expect(normalizeMask(null)).toEqual({
+      strokes: [],
+      autoSkin: false,
+      regions: [],
+      gradient: null,
+      inverted: false,
+      feather: 0,
+      density: 1,
+      raster: null,
+    });
   });
 });
