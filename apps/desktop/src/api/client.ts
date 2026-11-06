@@ -12,6 +12,7 @@ import type {
   AutoToneResult,
   CacheClearResult,
   CancelExportRequest,
+  ClearRasterMaskRequest,
   CollectionSummary,
   CommitChangesRequest,
   CreateProjectRequest,
@@ -43,6 +44,9 @@ import type {
   ProviderTestResult,
   RenameProjectRequest,
   RenderPreviewRequest,
+  SegmentMaskRequest,
+  SegmentationCapability,
+  SegmentationCapabilityRequest,
   SetCropRequest,
   SetLayerMaskRequest,
   SetProviderCredentialRequest,
@@ -75,6 +79,14 @@ export interface EditorApi {
   deleteVersion(req: VersionIdRequest): Promise<VersionSummary[]>;
   /** Render a snapshot for side-by-side comparison with the current edit. */
   renderVersionPreview(req: VersionPreviewRequest): Promise<PreviewResult>;
+  /** Whether the configured segmentation model passes a real probe run. */
+  checkSegmentationCapability(
+    req: SegmentationCapabilityRequest,
+  ): Promise<SegmentationCapability>;
+  /** Segment the photo and attach the result as a raster mask on the layer. */
+  runSegmentationMask(req: SegmentMaskRequest): Promise<DocumentState>;
+  /** Drop raster coverage but keep the brush/gradient part of the mask. */
+  clearRasterMask(req: ClearRasterMaskRequest): Promise<DocumentState>;
   renameProject(req: RenameProjectRequest): Promise<ProjectSummary>;
   /** Rename every photo's photo set in one step (metadata only). */
   renameCollection(req: { collectionId: string; name: string }): Promise<void>;

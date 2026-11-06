@@ -33,6 +33,7 @@ import type {
   CacheClearResult,
   CollectionSummary,
   ColorParams,
+  ClearRasterMaskRequest,
   CommitChangesRequest,
   CreateProjectRequest,
   CreateVersionRequest,
@@ -60,6 +61,7 @@ import type {
   PortraitParams,
   PreviewResult,
   ProjectRef,
+  SegmentationCapability,
   ProjectSummary,
   ProviderCapabilities,
   ProviderConfigInput,
@@ -156,6 +158,7 @@ function cloneMask(mask: LayerMask | null): LayerMask | null {
               end: { ...mask.gradient.end },
             }
           : null,
+        raster: mask.raster ? { ...mask.raster } : null,
         inverted: mask.inverted ?? false,
         feather: mask.feather ?? 0,
         density: mask.density ?? 1,
@@ -988,6 +991,32 @@ export class DemoBackend implements EditorApi {
     const state = await this.updateLayerParams(req);
     // Mirror the desktop contract: envelope only, no per-layer payload.
     return { ...state, layers: [] };
+  }
+
+  async checkSegmentationCapability(): Promise<SegmentationCapability> {
+    return {
+      available: false,
+      reason: "浏览器演示不支持本地 ONNX 推理，请在桌面版使用。",
+    };
+  }
+
+  async runSegmentationMask(): Promise<DocumentState> {
+    throw apiError(
+      "SEGMENTATION_MODEL_INVALID",
+      "segmentation needs the desktop app",
+      "浏览器演示不支持本地分割模型，请在桌面版使用。",
+    );
+  }
+
+  async clearRasterMask(req: ClearRasterMaskRequest): Promise<DocumentState> {
+    await delay(12);
+    const project = this.requireProject(req.projectId);
+    const layer = project.doc.layers.find((item) => item.id === req.layerId);
+    if (layer?.mask?.raster) {
+      layer.mask = { ...layer.mask, raster: null };
+      this.touch(project);
+    }
+    return cloneDocument(project.doc);
   }
 
   async listVersions(req: ProjectRef): Promise<VersionSummary[]> {

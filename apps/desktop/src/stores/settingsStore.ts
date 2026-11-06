@@ -52,6 +52,8 @@ export interface AppSettings {
   reduceMotion: boolean;
   /** Absolute `.onnx` path chosen in settings; only used by the desktop app. */
   aiDenoiseModelPath: string | null;
+  /** User-supplied segmentation model; the app ships no weights. */
+  segmentationModelPath: string | null;
   /** 0..100 blend applied when running the local ONNX denoiser. */
   aiDenoiseStrength: number;
   /** Preferred local denoise engine. */
@@ -85,6 +87,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: "ink",
   reduceMotion: false,
   aiDenoiseModelPath: null,
+  segmentationModelPath: null,
   aiDenoiseStrength: 100,
   aiDenoiseEngine: "photoHq",
   photoHqStrength: 80,
@@ -116,6 +119,10 @@ export function sanitizeSettings(input: unknown): AppSettings {
   const denoisePath =
     typeof raw.aiDenoiseModelPath === "string" && raw.aiDenoiseModelPath.trim()
       ? raw.aiDenoiseModelPath.trim()
+      : null;
+  const segmentationPath =
+    typeof raw.segmentationModelPath === "string" && raw.segmentationModelPath.trim()
+      ? raw.segmentationModelPath.trim()
       : null;
   const denoiseStrength =
     typeof raw.aiDenoiseStrength === "number" && Number.isFinite(raw.aiDenoiseStrength)
@@ -172,6 +179,7 @@ export function sanitizeSettings(input: unknown): AppSettings {
         ? raw.reduceMotion
         : DEFAULT_SETTINGS.reduceMotion,
     aiDenoiseModelPath: denoisePath,
+    segmentationModelPath: segmentationPath,
     aiDenoiseStrength: denoiseStrength,
     aiDenoiseEngine: includes(AI_DENOISE_ENGINES, raw.aiDenoiseEngine)
       ? raw.aiDenoiseEngine
