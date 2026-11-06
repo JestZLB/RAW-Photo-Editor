@@ -78,6 +78,7 @@ import {
   type PortraitEffectKey,
   type PortraitPresetId,
 } from "../lib/params";
+import { createEditQueue } from "./editQueue";
 import { useSettingsStore } from "./settingsStore";
 import { toastError, toastInfo, toastSuccess } from "./toastStore";
 
@@ -95,18 +96,6 @@ export interface PreviewState {
   fromSource: boolean;
   backend: string;
   histogram: Histogram | null;
-}
-
-interface ParamQueueItem {
-  projectId: string;
-  color?: ColorParams;
-  portrait?: PortraitParams;
-  blur?: BlurParams;
-}
-
-interface LayerPatchQueueItem {
-  projectId: string;
-  patch: LayerPatch;
 }
 
 export type CopiedAdjustments =
@@ -470,11 +459,6 @@ export const useEditorStore = create<EditorState>()((set, get) => {
   /** Document writes currently in flight, counted by the tracked API wrapper. */
   let pendingWrites = 0;
 
-  let pendingParams = new Map<string, ParamQueueItem>();
-  let pendingLayerPatches = new Map<string, LayerPatchQueueItem>();
-  let syncTimer: ReturnType<typeof setTimeout> | null = null;
-  let syncRunning = false;
-  let syncChain: Promise<void> = Promise.resolve();
   let colorCreation: Promise<LayerState | null> | null = null;
 
   function errorToast(error: unknown, fallback: string): void {
@@ -730,113 +714,29 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     }
   }
 
-  async function drainSync(): Promise<void> {
-    if (syncRunning) return;
-    syncRunning = true;
-    const api = get().api;
-    if (!api) {
-      pendingParams.clear();
-      pendingLayerPatches.clear();
-      syncRunning = false;
-      return;
-    }
-    try {
-      while (pendingLayerPatches.size > 0 || pendingParams.size > 0) {
-        const patches = [...pendingLayerPatches.entries()];
-        pendingLayerPatches.clear();
-        for (const [key, item] of patches) {
-          const doc = get().doc;
-          if (!doc || doc.id !== item.projectId) continue;
-          const layerId = key.slice(key.indexOf(":") + 1);
-          try {
-            const next = await api.updateLayer({
-              projectId: item.projectId,
-              layerId,
-              patch: item.patch,
-            });
-            mergeServerMeta(next);
-          } catch (error) {
-            markSaveFailed();
-            errorToast(error, "图层调整没有保存，请重试。");
-          }
-        }
-
-        const params = [...pendingParams.entries()];
-        pendingParams.clear();
-        for (const [key, item] of params) {
-          const doc = get().doc;
-          if (!doc || doc.id !== item.projectId) continue;
-          const layerId = key.slice(key.indexOf(":") + 1);
-          try {
-            // Drag path: only the envelope is merged here, so the full document
-            // (every mask and retouch point) must not travel back over IPC.
-            const next = await api.updateLayerParamsMeta({
-              projectId: item.projectId,
-              layerId,
-              ...(item.color ? { color: item.color } : {}),
-              ...(item.portrait ? { portrait: item.portrait } : {}),
-              ...(item.blur ? { blur: item.blur } : {}),
-            });
-            mergeServerMeta(next);
-          } catch (error) {
-            markSaveFailed();
-            errorToast(error, "调整没有保存，请再试一次。");
-          }
-        }
-      }
-      schedulePreview(70);
-    } finally {
-      syncRunning = false;
-      if (pendingLayerPatches.size > 0 || pendingParams.size > 0) {
-        syncChain = syncChain.then(drainSync).catch(() => undefined);
-      }
-    }
-  }
-
-  function scheduleSync(): void {
-    if (syncTimer !== null) return;
-    syncTimer = setTimeout(() => {
-      syncTimer = null;
-      syncChain = syncChain.then(drainSync).catch(() => undefined);
-    }, 70);
-  }
+  // High-frequency edits are coalesced and written by a separate subsystem.
+  // These three wrappers keep every existing call site in this file unchanged.
+  const editQueue = createEditQueue({
+    snapshot: () => ({ api: get().api, doc: get().doc }),
+    mergeServerMeta,
+    markSaveFailed,
+    onError: errorToast,
+    schedulePreview,
+  });
 
   function queueParams(
     layerId: string,
     patch: { color?: ColorParams; portrait?: PortraitParams; blur?: BlurParams },
   ): void {
-    const doc = get().doc;
-    if (!doc) return;
-    const key = `${doc.id}:${layerId}`;
-    const existing = pendingParams.get(key);
-    pendingParams.set(key, {
-      projectId: doc.id,
-      color: patch.color ?? existing?.color,
-      portrait: patch.portrait ?? existing?.portrait,
-      blur: patch.blur ?? existing?.blur,
-    });
-    scheduleSync();
+    editQueue.queueParams(layerId, patch);
   }
 
   function queueLayerPatch(layerId: string, patch: LayerPatch): void {
-    const doc = get().doc;
-    if (!doc) return;
-    const key = `${doc.id}:${layerId}`;
-    const existing = pendingLayerPatches.get(key);
-    pendingLayerPatches.set(key, {
-      projectId: doc.id,
-      patch: { ...existing?.patch, ...patch },
-    });
-    scheduleSync();
+    editQueue.queueLayerPatch(layerId, patch);
   }
 
   function flushSync(): Promise<void> {
-    if (syncTimer !== null) {
-      clearTimeout(syncTimer);
-      syncTimer = null;
-    }
-    syncChain = syncChain.then(drainSync).catch(() => undefined);
-    return syncChain;
+    return editQueue.flush();
   }
 
   /**
