@@ -280,6 +280,47 @@ fn effective_crop(
     (crop, crop.width.max(1), crop.height.max(1))
 }
 
+/// Layers whose effects are not implemented by the GPU pipeline must fall back
+/// to the CPU renderer. Blur is deliberately listed here: the layer loop in
+/// `render_document_gpu` only handles `Color` / `AiResult` and skips every other
+/// kind with `_ => continue`, so an unmasked blur layer used to be silently
+/// dropped on machines with a GPU while CPU previews showed the blur.
+fn layer_requires_cpu(layer: &document::Layer) -> bool {
+    if layer.mask.as_ref().is_some_and(|mask| !mask.is_empty()) {
+        return true;
+    }
+    if layer.kind == LayerKind::Portrait
+        && layer
+            .portrait
+            .as_ref()
+            .is_some_and(|params| params.has_active_effect())
+    {
+        return true;
+    }
+    if matches!(layer.kind, LayerKind::Retouch | LayerKind::Blur) {
+        return true;
+    }
+    if layer.kind == LayerKind::Color {
+        if let Some(color) = &layer.color {
+            let sanitized = color.sanitized();
+            return sanitized.clarity.abs() > 0.0001
+                || sanitized.sharpness.abs() > 0.0001
+                || sanitized.hue.abs() > 0.0001
+                || sanitized.hsl_saturation.abs() > 0.0001
+                || sanitized.hsl_lightness.abs() > 0.0001
+                || sanitized.uses_tone_curve()
+                || sanitized.uses_lut()
+                || sanitized.noise_luma != 0.0
+                || sanitized.noise_chroma != 0.0
+                || sanitized.vignette != 0.0
+                || sanitized.grain != 0.0
+                || sanitized.dehaze != 0.0
+                || sanitized.chromatic != 0.0;
+        }
+    }
+    false
+}
+
 /// Returns `None` when this document should use the CPU renderer.
 pub fn render_document_gpu(
     document: &ProjectDocument,
@@ -291,45 +332,13 @@ pub fn render_document_gpu(
     if source.width == 0 || source.height == 0 {
         return None;
     }
-    for layer in &document.layers {
-        if !layer.visible || layer.opacity <= 0.0 {
-            continue;
-        }
-        if layer.mask.as_ref().is_some_and(|mask| !mask.is_empty()) {
-            return None;
-        }
-        if layer.kind == LayerKind::Portrait
-            && layer
-                .portrait
-                .as_ref()
-                .is_some_and(|params| params.has_active_effect())
-        {
-            return None;
-        }
-        if layer.kind == LayerKind::Retouch {
-            return None;
-        }
-        if layer.kind == LayerKind::Color {
-            if let Some(color) = &layer.color {
-                let sanitized = color.sanitized();
-                if sanitized.clarity.abs() > 0.0001
-                    || sanitized.sharpness.abs() > 0.0001
-                    || sanitized.hue.abs() > 0.0001
-                    || sanitized.hsl_saturation.abs() > 0.0001
-                    || sanitized.hsl_lightness.abs() > 0.0001
-                    || sanitized.uses_tone_curve()
-                    || sanitized.uses_lut()
-                    || sanitized.noise_luma != 0.0
-                    || sanitized.noise_chroma != 0.0
-                    || sanitized.vignette != 0.0
-                    || sanitized.grain != 0.0
-                    || sanitized.dehaze != 0.0
-                    || sanitized.chromatic != 0.0
-                {
-                    return None;
-                }
-            }
-        }
+    if document
+        .layers
+        .iter()
+        .filter(|layer| layer.visible && layer.opacity > 0.0)
+        .any(layer_requires_cpu)
+    {
+        return None;
     }
 
     let (crop, crop_width, crop_height) = effective_crop(document, source);
@@ -793,5 +802,20 @@ mod tests {
         doc.layers.push(portrait);
         let resolver = EmptyResolver;
         assert!(render_document_gpu(&doc, &source(), Some(16), &resolver).is_none());
+    }
+
+    #[test]
+    fn blur_layer_forces_cpu_fallback_even_without_a_mask() {
+        // Regression: the GPU layer loop ignores unknown kinds with
+        // `_ => continue`. An unmasked blur layer used to slip past every
+        // fallback check and produce a preview with no blur at all.
+        assert!(
+            layer_requires_cpu(&Layer::blur()),
+            "blur must never be rendered by the GPU path"
+        );
+        // Guard against over-broad fallback: a plain colour layer is still
+        // GPU-safe, which is the whole point of this path.
+        let plain = Layer::color();
+        assert!(!layer_requires_cpu(&plain));
     }
 }
