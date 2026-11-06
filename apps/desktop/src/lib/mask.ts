@@ -133,7 +133,10 @@ export function maskHasContent(mask: LayerMask | null | undefined): boolean {
       (mask.strokes.length > 0 ||
         mask.autoSkin ||
         mask.gradient ||
-        (mask.regions?.length ?? 0) > 0),
+        (mask.regions?.length ?? 0) > 0 ||
+        // A segmentation mask can be the only source: without this the UI would
+        // report "全图生效" and hide actions that need a mask.
+        mask.raster),
   );
 }
 
@@ -141,6 +144,7 @@ export function maskSummary(mask: LayerMask | null | undefined): string {
   if (!maskHasContent(mask)) return "全图生效";
   const parts: string[] = [];
   if (mask?.autoSkin) parts.push("自动肤色");
+  if (mask?.raster) parts.push("智能蒙版");
   const regions = mask?.regions ?? [];
   const faceScopes = regions.filter((region) => region.kind === "face").length;
   if (faceScopes > 0) {
