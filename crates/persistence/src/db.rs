@@ -381,6 +381,27 @@ impl Database {
         Ok(out)
     }
 
+    /// Byte sizes of snapshot JSON, newest first. Casting to BLOB makes
+    /// `LENGTH` count UTF-8 bytes instead of characters — Chinese names are
+    /// three bytes each, and the storage budget must account for real bytes.
+    /// Deliberately avoids loading the documents into memory.
+    pub fn version_sizes(&self, project_id: Uuid) -> Result<Vec<(Uuid, u64)>, PersistenceError> {
+        let conn = self.connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, LENGTH(CAST(document_json AS BLOB))
+             FROM project_versions WHERE project_id = ?1
+             ORDER BY created_at DESC, rowid DESC",
+        )?;
+        let rows = stmt.query_map(params![project_id.to_string()], |row| {
+            Ok((get_uuid(row, 0)?, row.get::<_, i64>(1)? as u64))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
     pub fn get_version(&self, id: Uuid) -> Result<Option<VersionRecord>, PersistenceError> {
         let conn = self.connection()?;
         let record = conn

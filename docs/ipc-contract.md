@@ -341,7 +341,7 @@ interface DocumentState {
 | `update_layer_params` | `{ projectId: string; layerId: string; color?: ColorParams; portrait?: PortraitParams; retouch?: RetouchParams; blur?: BlurParams }` | `DocumentState`（不提交历史；`blur.radius` 为最短边比例 0..0.08，仅 `blur` 图层接受） |
 | `update_layer_params_meta` | 同 `update_layer_params` | `DocumentState`（`layers` 恒为空数组，只用于合并 `revision` / 历史；拖动中每 ~70ms 的高频写入走这里，避免整份蒙版与修复点在 IPC 上往返） |
 | `list_versions` | `{ projectId: string }` | `VersionSummary[]`（按创建时间倒序，最多 200 条；不含文档 JSON） |
-| `create_version` | `{ projectId: string; name: string }` | `VersionSummary[]`（保存当前文档快照；名称裁剪空白后 1..60 字符，超限返回 `INVALID_ARGUMENT`；每项目超过 50 个时丢弃最旧） |
+| `create_version` | `{ projectId: string; name: string }` | `VersionSummary[]`（保存当前文档快照；名称裁剪空白后 1..60 字符；单条 JSON 超过 4 MiB 返回 `INVALID_ARGUMENT`；每项目超过 50 个或累计 32 MiB 时丢弃最旧，并一并删除其预览缓存。最新一条永不淘汰） |
 | `restore_version` | `{ projectId: string; versionId: string }` | `DocumentState`（恢复快照；项目 id / 照片集 / 照片名保持不变，revision 前进，并写入一条可撤销历史「恢复版本：名称」） |
 | `delete_version` | `{ projectId: string; versionId: string }` | `VersionSummary[]`（按 projectId 限定，越权 id 视为不存在；同时删除该快照的预览缓存） |
 | `render_version_preview` | `{ projectId: string; versionId: string; maxDimension?: number }` | `PreviewResult`（把快照文档渲染成 PNG 供并排对比；缓存键为 `version-{versionId}-d{dim}.png`，不参与 `render-*` 的轮换） |

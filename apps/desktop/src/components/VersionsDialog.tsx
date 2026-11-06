@@ -249,7 +249,9 @@ export function VersionsDialog() {
             </>
           ) : (
             <>
-              <span>保存的是这个项目的图层、调色与人像参数；原图不会被改动。</span>
+              <span>
+                保存图层与参数；每项目最多 50 个版本 / 约 32 MB，超出会删除最旧的，原图不会被改动。
+              </span>
               <Button variant="ghost" size="sm" disabled={busy} onClick={close}>
                 关闭
               </Button>

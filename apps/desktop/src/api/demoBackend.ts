@@ -102,7 +102,15 @@ interface HistoryEntry extends HistorySnapshot {
 interface DemoVersion {
   summary: VersionSummary;
   snapshot: DocumentState;
+  /** Approximate JSON size, used by the same storage budget as the desktop. */
+  bytes: number;
 }
+
+// Keep in sync with MAX_VERSIONS_PER_PROJECT / MAX_VERSION_BYTES_* in
+// crates/app-core/src/service/versions.rs.
+const MAX_DEMO_VERSIONS = 50;
+const MAX_DEMO_VERSION_BYTES = 4 * 1024 * 1024;
+const MAX_DEMO_TOTAL_BYTES = 32 * 1024 * 1024;
 
 interface DemoProject {
   doc: DocumentState;
@@ -1084,6 +1092,15 @@ export class DemoBackend implements EditorApi {
     if (name.length > 60) {
       throw apiError("INVALID_ARGUMENT", "Version name is too long", "版本名称最多 60 个字符。");
     }
+    const snapshot = cloneDocument(project.doc);
+    const bytes = new TextEncoder().encode(JSON.stringify(snapshot)).length;
+    if (bytes > MAX_DEMO_VERSION_BYTES) {
+      throw apiError(
+        "INVALID_ARGUMENT",
+        "Snapshot is too large",
+        "当前文档过大，无法保存为版本；请先精简蒙版或修复点后重试。",
+      );
+    }
     project.versions.unshift({
       summary: {
         id: uid("version"),
@@ -1092,7 +1109,17 @@ export class DemoBackend implements EditorApi {
         createdAt: nowIso(),
         thumbnailPath: project.doc.source?.previewPath ?? null,
       },
-      snapshot: cloneDocument(project.doc),
+      snapshot,
+      bytes,
+    });
+    // Same policy as the desktop service: always keep the newest, then drop
+    // everything past the count or byte budget.
+    let total = 0;
+    project.versions = project.versions.filter((entry, index) => {
+      total += entry.bytes;
+      return (
+        index === 0 || (index < MAX_DEMO_VERSIONS && total <= MAX_DEMO_TOTAL_BYTES)
+      );
     });
     return this.listVersions({ projectId: req.projectId });
   }
