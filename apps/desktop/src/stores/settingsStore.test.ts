@@ -61,6 +61,7 @@ describe("settings store", () => {
       exportColorSpace: "displayP3",
       exportMetadata: "privacy",
       exportBitDepth: "sixteen",
+      exportNameTemplate: "{name}-luma",
       aiDenoiseModelPath: null,
       segmentationModelPath: null,
       aiDenoiseStrength: 100,
@@ -96,6 +97,17 @@ describe("settings store", () => {
     expect(
       sanitizeSettings({ ...DEFAULT_SETTINGS, segmentationModelPath: " D:\\m\\seg.onnx " }),
     ).toMatchObject({ segmentationModelPath: "D:\\m\\seg.onnx" });
+    expect(
+      sanitizeSettings({ ...DEFAULT_SETTINGS, exportNameTemplate: "" }),
+    ).toMatchObject({ exportNameTemplate: "{name}-luma" });
+    expect(
+      sanitizeSettings({
+        ...DEFAULT_SETTINGS,
+        exportNameTemplate: `  {name}-${"x".repeat(200)}  `,
+      }),
+    ).toMatchObject({
+      exportNameTemplate: `{name}-${"x".repeat(113)}`,
+    });
     expect(
       sanitizeSettings({
         ...DEFAULT_SETTINGS,
