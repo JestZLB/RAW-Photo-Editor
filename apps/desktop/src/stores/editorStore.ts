@@ -80,6 +80,7 @@ import {
 } from "../lib/params";
 import { createEditQueue } from "./editQueue";
 import { createPreviewScheduler } from "./previewScheduler";
+import { createSaveIndicator } from "./saveIndicator";
 import { useSettingsStore } from "./settingsStore";
 import { toastError, toastInfo, toastSuccess } from "./toastStore";
 
@@ -116,13 +117,6 @@ export interface ImportBatchState {
   done: number;
   currentName: string;
 }
-
-export /**
-/**
- * Quiet period after the last write settles before the status bar says "saved".
- * Without it, every debounce tick during a drag would flash saved/saving.
- */
-const SAVED_SETTLE_MS = 400;
 
 const FREEZE_GRID_COLS = 16;
 export const FREEZE_GRID_ROWS = 16;
@@ -438,10 +432,6 @@ export interface EditorState {
 let bootstrapPromise: Promise<void> | null = null;
 
 export const useEditorStore = create<EditorState>()((set, get) => {
-  let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Document writes currently in flight, counted by the tracked API wrapper. */
-  let pendingWrites = 0;
-
   let colorCreation: Promise<LayerState | null> | null = null;
 
   function errorToast(error: unknown, fallback: string): void {
@@ -453,48 +443,25 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     return get().doc?.id === projectId;
   }
 
-  function clearAutosaveTimer(): void {
-    if (autosaveTimer !== null) {
-      clearTimeout(autosaveTimer);
-      autosaveTimer = null;
-    }
-  }
+  // Save indicator is a small state machine; the wrappers keep every existing
+  // call site (queue failures, commit failures, API write tracking) unchanged.
+  const saveIndicator = createSaveIndicator({
+    status: () => get().autosave,
+    setStatus: (autosave) => set({ autosave }),
+  });
 
   /** Called by the tracked API when a document write leaves the renderer. */
   function markWriteStart(): void {
-    pendingWrites += 1;
-    clearAutosaveTimer();
-    if (get().autosave !== "saving") set({ autosave: "saving" });
+    saveIndicator.start();
   }
 
-  /**
-   * Called when a write settles. "saved" only appears once every in-flight
-   * write finished and a short quiet period passed, so a slow disk can no longer
-   * show a premature success (the previous 900 ms timer could, because it was
-   * started before the write resolved).
-   */
   function markWriteSettled(ok: boolean): void {
-    pendingWrites = Math.max(0, pendingWrites - 1);
-    if (!ok) {
-      markSaveFailed();
-      return;
-    }
-    if (pendingWrites > 0) return;
-    clearAutosaveTimer();
-    autosaveTimer = setTimeout(() => {
-      autosaveTimer = null;
-      if (pendingWrites > 0) return;
-      // A failure stays visible until a later write succeeds again.
-      if (get().autosave === "error") return;
-      set({ autosave: "saved" });
-    }, SAVED_SETTLE_MS);
+    saveIndicator.settle(ok);
   }
 
   /** A write failed: stop pretending it was saved until one succeeds again. */
   function markSaveFailed(): void {
-    pendingWrites = 0;
-    clearAutosaveTimer();
-    set({ autosave: "error" });
+    saveIndicator.fail();
   }
 
   function patchLocalLayer(layerId: string, updater: (layer: LayerState) => LayerState): void {
