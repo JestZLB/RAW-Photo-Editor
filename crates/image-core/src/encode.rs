@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::Path;
 
 use image::codecs::jpeg::JpegEncoder;
-use image::codecs::png::PngEncoder;
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::codecs::tiff::TiffEncoder;
 use image::{ExtendedColorType, ImageEncoder};
 
@@ -142,12 +142,49 @@ pub fn encode_atomic_profiled(
     )
 }
 
+/// Encode a preview-cache PNG with the fastest lossless settings.
+///
+/// Previews are internal scratch files: they are rewritten on every edit and
+/// pruned by the cache rotation, so a ~2x larger file is far cheaper than the
+/// adaptive-filter + balanced-deflate encode on each slider tick. PNG stays
+/// lossless, so cached pixels are byte-for-byte identical to the default path.
+/// Exports, mask assets and every other format keep the archival settings.
+pub fn encode_atomic_preview(path: &Path, image: &DecodedImage) -> Result<u64, ImageError> {
+    encode_atomic_image_inner(
+        path,
+        &RasterImage::Eight(image.clone()),
+        OutputFormat::Png,
+        100,
+        &EncodeOptions::default(),
+        true,
+    )
+}
+
 pub fn encode_atomic_image(
     path: &Path,
     image: &RasterImage,
     format: OutputFormat,
     quality: u32,
     options: &EncodeOptions,
+) -> Result<u64, ImageError> {
+    encode_atomic_image_inner(path, image, format, quality, options, false)
+}
+
+fn make_png_encoder<W: Write>(writer: W, fast: bool) -> PngEncoder<W> {
+    if fast {
+        PngEncoder::new_with_quality(writer, CompressionType::Fast, FilterType::Sub)
+    } else {
+        PngEncoder::new(writer)
+    }
+}
+
+fn encode_atomic_image_inner(
+    path: &Path,
+    image: &RasterImage,
+    format: OutputFormat,
+    quality: u32,
+    options: &EncodeOptions,
+    fast_png: bool,
 ) -> Result<u64, ImageError> {
     if matches!(image, RasterImage::Sixteen(_))
         && matches!(format, OutputFormat::Jpeg | OutputFormat::Webp)
@@ -181,7 +218,7 @@ pub fn encode_atomic_image(
     let exif = options.exif;
     match (format, image) {
         (OutputFormat::Png, RasterImage::Eight(image)) => {
-            let mut encoder = PngEncoder::new(&mut *writer);
+            let mut encoder = make_png_encoder(&mut *writer, fast_png);
             attach_profile(&mut encoder, icc)?;
             attach_exif(&mut encoder, exif)?;
             encoder
@@ -194,7 +231,7 @@ pub fn encode_atomic_image(
                 .map_err(|e| ImageError::Encode(e.to_string()))?;
         }
         (OutputFormat::Png, RasterImage::Sixteen(image)) => {
-            let mut encoder = PngEncoder::new(&mut *writer);
+            let mut encoder = make_png_encoder(&mut *writer, fast_png);
             attach_profile(&mut encoder, icc)?;
             attach_exif(&mut encoder, exif)?;
             let bytes = u16_bytes(&image.rgba);

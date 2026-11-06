@@ -7,8 +7,8 @@ use color_pipeline::Lut;
 use document::{CropRect, DocumentError, Layer, LayerKind, MoveDirection, ProjectDocument};
 use image_core::{
     decode_image_from_memory, decode_image_from_path, encode_atomic, encode_atomic_image,
-    probe_image_dimensions, DecodedImage, EncodeOptions, LinearImage, OutputFormat, RasterImage,
-    WatermarkAnchor, WatermarkSpec,
+    encode_atomic_preview, probe_image_dimensions, DecodedImage, EncodeOptions, LinearImage,
+    OutputFormat, RasterImage, WatermarkAnchor, WatermarkSpec,
 };
 use portrait_engine::regions::RegionKind;
 use portrait_engine::{FaceAnalyzer, PortraitWarning};
@@ -476,7 +476,9 @@ impl AppService {
         let histogram = preview_histogram(&encoded);
         self.store_histogram(cache_path, &histogram);
         self.assets.ensure_project_dirs(project_id)?;
-        encode_atomic(cache_path, &encoded, OutputFormat::Png, 100)?;
+        // Internal cache file: fastest lossless PNG. Exports keep the archival
+        // encoder unchanged.
+        encode_atomic_preview(cache_path, &encoded)?;
         Ok(PreviewResult {
             path: cache_path.to_string_lossy().to_string(),
             width: encoded.width,
