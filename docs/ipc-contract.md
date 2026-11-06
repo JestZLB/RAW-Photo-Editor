@@ -594,6 +594,7 @@ Mock Provider 完全本地执行，不上传图片；OpenAI 兼容 Provider 仅�
 - `update_layer_params` 只改内存文档；`commit_changes` 才生成一条撤销记录并触发自动保存。滑块拖动必须使用该组合。
 - `update_layer` 中仅含 `opacity` 的补丁同样是为拖动服务，不生成历史；前端松开滑块后调用 `commit_changes`。可见性/混合模式等离散补丁立即生成一条历史。
 - `render_preview.maxDimension` 由前端设置页决定（1200/1600/2048），后端上限 8192；缓存键包含 revision 与该尺寸。
+- 字段名由 `crates/app-core/tests/contract.rs` 锁定。前端 `types.ts` 是手写镜像，重命名字段或漏掉 `rename_all = "camelCase"` 会让该测试失败；新增字段时同步改测试与本文档。
 - `set_layer_mask` 收到不含 `raster` 的蒙版时会**保留**已有栅格覆盖（画笔/渐变界面不发送该字段）；需要删除栅格时调用 `clear_raster_mask`，清空整个蒙版仍会一并移除。
 - `*_version` 系列的成功响应只保证 `DocumentState` 的语义；`restore_version` 返回的文档已包含快照内容，调用方应整体替换当前文档而不是局部合并。版本快照存于 SQLite，删除照片时随外键级联清理。
 - 拖动滑块时前端请求 900px 的交互档位，静止约 420ms 后自动回到设置档位；两档写入各自的缓存键，最终像素与导出不受影响。`update_layer_params_meta` 的响应不可当作文档使用。

@@ -151,6 +151,10 @@ LUMA_RAW_SAMPLE=/path/to/sample.rw2 cargo test -p app-core --test service raw_sa
 
 图像回归素材要求见 [tests/fixtures/README.md](tests/fixtures/README.md)。
 
+`crates/app-core/tests/contract.rs` 锁定 IPC 的字段名：`apps/desktop/src/api/types.ts` 是手写镜像，
+所以重命名 Rust 字段或漏掉 `rename_all = "camelCase"` 会在测试里失败，而不是在运行时才发现。
+新增或修改命令时请同步更新该文件与 [IPC 契约](docs/ipc-contract.md)。
+
 ## 文档
 
 - [IPC 契约 v1](docs/ipc-contract.md)
