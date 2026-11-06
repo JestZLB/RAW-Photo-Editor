@@ -32,6 +32,7 @@ import type {
   ProviderConfigInput,
   ProviderInfo,
   ProviderTestResult,
+  BlurParams,
   ColorParams,
   SegmentationCapability,
   VersionSummary,
@@ -100,6 +101,7 @@ interface ParamQueueItem {
   projectId: string;
   color?: ColorParams;
   portrait?: PortraitParams;
+  blur?: BlurParams;
 }
 
 interface LayerPatchQueueItem {
@@ -397,7 +399,7 @@ export interface EditorState {
   redo: () => Promise<void>;
 
   addLayer: (
-    kind: "portrait" | "color" | "retouch",
+    kind: "portrait" | "color" | "retouch" | "blur",
     options?: { name?: string; portrait?: PortraitParams; mask?: LayerMask | null },
   ) => Promise<LayerState | null>;
   ensureColorLayer: () => Promise<LayerState | null>;
@@ -412,6 +414,8 @@ export interface EditorState {
 
   editPortrait: (layerId: string, params: PortraitParams) => void;
   editColor: (layerId: string, params: ColorParams) => void;
+  /** Live radius change for a background-blur layer. */
+  editBlur: (layerId: string, params: BlurParams) => void;
   commitEdit: (label: string) => Promise<void>;
   /** Flush queued edits and commit before the window closes. */
   flushPendingEdits: () => Promise<boolean>;
@@ -763,6 +767,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
               layerId,
               ...(item.color ? { color: item.color } : {}),
               ...(item.portrait ? { portrait: item.portrait } : {}),
+              ...(item.blur ? { blur: item.blur } : {}),
             });
             mergeServerMeta(next);
           } catch (error) {
@@ -788,7 +793,10 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     }, 70);
   }
 
-  function queueParams(layerId: string, patch: { color?: ColorParams; portrait?: PortraitParams }): void {
+  function queueParams(
+    layerId: string,
+    patch: { color?: ColorParams; portrait?: PortraitParams; blur?: BlurParams },
+  ): void {
     const doc = get().doc;
     if (!doc) return;
     const key = `${doc.id}:${layerId}`;
@@ -797,6 +805,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       projectId: doc.id,
       color: patch.color ?? existing?.color,
       portrait: patch.portrait ?? existing?.portrait,
+      blur: patch.blur ?? existing?.blur,
     });
     scheduleSync();
   }
@@ -3331,6 +3340,13 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     editColor: (layerId, params) => {
       patchLocalLayer(layerId, (item) => ({ ...item, color: { ...params } }));
       queueParams(layerId, { color: { ...params } });
+      noteInteractiveEdit();
+      schedulePreview(130);
+    },
+
+    editBlur: (layerId, params) => {
+      patchLocalLayer(layerId, (item) => ({ ...item, blur: { ...params } }));
+      queueParams(layerId, { blur: { ...params } });
       noteInteractiveEdit();
       schedulePreview(130);
     },

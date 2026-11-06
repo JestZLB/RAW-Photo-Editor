@@ -96,7 +96,13 @@ export interface CropState {
 }
 
 export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "softLight";
-export type LayerKind = "base" | "portrait" | "color" | "aiResult" | "retouch";
+export type LayerKind = "base" | "portrait" | "color" | "aiResult" | "retouch" | "blur";
+
+/** Background blur; the layer's mask is where the effect applies. */
+export interface BlurParams {
+  /** Fraction of the shortest frame side, 0..0.08. */
+  radius: number;
+}
 
 export type RetouchMode = "clone" | "heal";
 
@@ -374,6 +380,8 @@ export interface LayerState {
   color: ColorParams | null;
   portrait: PortraitParams | null;
   retouch: RetouchParams | null;
+  /** Present on `blur` layers. */
+  blur: BlurParams | null;
   mask: LayerMask | null;
   assetId: string | null;
   previewPath: string | null;
@@ -696,6 +704,7 @@ export interface UpdateLayerParamsRequest {
   color?: ColorParams;
   portrait?: PortraitParams;
   retouch?: RetouchParams;
+  blur?: BlurParams;
 }
 
 export interface CommitChangesRequest {
@@ -716,7 +725,7 @@ export interface SetLayerMaskRequest {
 
 export interface AddLayerRequest {
   projectId: string;
-  kind: "portrait" | "color" | "retouch";
+  kind: "portrait" | "color" | "retouch" | "blur";
   name?: string;
   portrait?: PortraitParams;
   mask?: LayerMask | null;

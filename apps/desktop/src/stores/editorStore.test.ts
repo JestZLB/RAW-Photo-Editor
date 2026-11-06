@@ -1,4 +1,4 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EditorApi } from "../api/client";
 import { apiError } from "../api/errors";
@@ -212,6 +212,7 @@ function importDoc(id: string, collectionId: string, name: string): DocumentStat
         color: null,
         portrait: null,
         retouch: null,
+        blur: null,
         mask: null,
         assetId: null,
         previewPath: null,
@@ -357,6 +358,7 @@ describe("manual keypoint correction", () => {
             geometry,
           } as unknown as import("../api/types").PortraitParams,
           retouch: null,
+          blur: null,
           mask: null,
           assetId: null,
           previewPath: null,
